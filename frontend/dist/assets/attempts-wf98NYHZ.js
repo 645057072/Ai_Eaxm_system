@@ -1,0 +1,1 @@
+import{m as s}from"./index-YvhJ4jwc.js";function r(t){return s.get(`/v1/attempts/${t}`)}function a(t,e){return s.put(`/v1/attempts/${t}/answers`,{answers:e})}function m(t){return s.post(`/v1/attempts/${t}/submit`)}export{m as a,r as g,a as s};
