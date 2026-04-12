@@ -28,7 +28,9 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { isAxiosError } from "axios";
 import { ElMessage } from "element-plus";
+import { apiErrorMessage } from "@/api/http";
 import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
@@ -45,8 +47,16 @@ async function onSubmit() {
     await auth.login(username.value, password.value);
     const redir = (route.query.redirect as string) || "/";
     await router.replace(redir);
-  } catch {
-    ElMessage.error("登录失败，请检查账号密码或稍后重试");
+  } catch (e) {
+    const st = isAxiosError(e) ? e.response?.status : undefined;
+    // 502/503/504 为网关或上游不可用，与账号密码是否正确无关
+    if (st === 502 || st === 503 || st === 504) {
+      ElMessage.error(
+        "无法连接后端服务（网关错误）。请在服务器上检查 API 容器是否运行、迁移是否成功，或查看 docker logs。",
+      );
+    } else {
+      ElMessage.error(apiErrorMessage(e, "登录失败，请检查账号密码或稍后重试"));
+    }
   } finally {
     loading.value = false;
   }

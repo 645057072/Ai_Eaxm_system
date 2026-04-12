@@ -13,6 +13,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # 须先将列改为可空，再写入 NULL；否则在 NOT NULL 约束下 UPDATE 会报 1048
+    op.alter_column(
+        "sys_user",
+        "enterprise_id",
+        existing_type=sa.Integer(),
+        nullable=True,
+    )
     bind = op.get_bind()
     bind.execute(
         sa.text(
@@ -23,12 +30,6 @@ def upgrade() -> None:
             WHERE r.code = 'admin'
             """
         )
-    )
-    op.alter_column(
-        "sys_user",
-        "enterprise_id",
-        existing_type=sa.Integer(),
-        nullable=True,
     )
 
 
