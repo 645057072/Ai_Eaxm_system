@@ -31,6 +31,18 @@ export const SYSTEM_EMOJI = {
   submitExam: "\u{1F4E4}",
   welcome: "\u{1F44B}",
   list: "\u{1F4CB}",
+  /** 系统管理、数智 BI 等扩展菜单 */
+  systemMgmt: "\u{1F6E0}\uFE0F",
+  biCenter: "\u{1F4CA}",
+  basicInfo: "\u{1F4C1}",
+  settingsCenter: "\u2699\uFE0F",
+  supervision: "\u{1F441}\uFE0F",
+  enterprise: "\u{1F3E2}",
+  course: "\u{1F4D2}",
+  documentDesign: "\u{1F4DD}",
+  printSettings: "\u{1F5BC}\uFE0F",
+  onlineUsers: "\u{1F465}",
+  logMgmt: "\u{1F4DC}",
 } as const;
 
 export type SystemEmojiKey = keyof typeof SYSTEM_EMOJI;

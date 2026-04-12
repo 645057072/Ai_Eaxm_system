@@ -1,11 +1,15 @@
 <template>
   <el-container class="layout">
-    <el-aside width="228px" class="aside">
+    <el-aside width="256px" class="aside">
       <div class="brand">
         <AppEmoji name="brand" size="lg" decorative />
         <span class="brand-text">考试系统</span>
       </div>
-      <el-menu :default-active="route.path" router>
+      <el-menu
+        :default-active="route.path"
+        :default-openeds="systemMenuOpeneds"
+        router
+      >
         <el-menu-item index="/">
           <span class="menu-item-inner"><AppEmoji name="home" size="sm" decorative />首页</span>
         </el-menu-item>
@@ -23,6 +27,50 @@
         </el-menu-item>
         <el-menu-item v-if="auth.isStudent" index="/exam/available">
           <span class="menu-item-inner"><AppEmoji name="availableExams" size="sm" decorative />可参加的考试</span>
+        </el-menu-item>
+
+        <!-- 系统管理：多级菜单（仅管理员） -->
+        <el-sub-menu v-if="auth.isAdmin" index="sys-root">
+          <template #title>
+            <span class="menu-item-inner"><AppEmoji name="systemMgmt" size="sm" decorative />系统管理</span>
+          </template>
+          <el-sub-menu index="sys-basic">
+            <template #title>
+              <span class="submenu-title"><AppEmoji name="basicInfo" size="sm" decorative />基础信息</span>
+            </template>
+            <el-menu-item index="/system/enterprise">
+              <span class="menu-item-inner"><AppEmoji name="enterprise" size="sm" decorative />企业信息</span>
+            </el-menu-item>
+            <el-menu-item index="/system/course">
+              <span class="menu-item-inner"><AppEmoji name="course" size="sm" decorative />课程信息</span>
+            </el-menu-item>
+          </el-sub-menu>
+          <el-sub-menu index="sys-settings">
+            <template #title>
+              <span class="submenu-title"><AppEmoji name="settingsCenter" size="sm" decorative />设置中心</span>
+            </template>
+            <el-menu-item index="/system/document-design">
+              <span class="menu-item-inner"><AppEmoji name="documentDesign" size="sm" decorative />单据设计</span>
+            </el-menu-item>
+            <el-menu-item index="/system/print-settings">
+              <span class="menu-item-inner"><AppEmoji name="printSettings" size="sm" decorative />打印设置</span>
+            </el-menu-item>
+          </el-sub-menu>
+          <el-sub-menu index="sys-supervision">
+            <template #title>
+              <span class="submenu-title"><AppEmoji name="supervision" size="sm" decorative />监管服务</span>
+            </template>
+            <el-menu-item index="/system/online-users">
+              <span class="menu-item-inner"><AppEmoji name="onlineUsers" size="sm" decorative />在线用户</span>
+            </el-menu-item>
+            <el-menu-item index="/system/logs">
+              <span class="menu-item-inner"><AppEmoji name="logMgmt" size="sm" decorative />日志管理</span>
+            </el-menu-item>
+          </el-sub-menu>
+        </el-sub-menu>
+
+        <el-menu-item v-if="auth.isAdmin" index="/bi">
+          <span class="menu-item-inner"><AppEmoji name="biCenter" size="sm" decorative />数智BI中心</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -44,8 +92,12 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+
+/** 系统管理下各级子菜单默认展开，便于定位 */
+const systemMenuOpeneds = ref(["sys-root", "sys-basic", "sys-settings", "sys-supervision"]);
 
 const auth = useAuthStore();
 const route = useRoute();
@@ -94,5 +146,10 @@ function onLogout() {
   gap: 6px;
   color: #475569;
   font-size: 14px;
+}
+.submenu-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>
