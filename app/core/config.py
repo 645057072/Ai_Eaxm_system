@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # Redis（会话、限流、Celery broker 预留）；环境变量 REDIS_URL
     redis_url: str = "redis://127.0.0.1:6379/0"
 
+    # 营业执照等附件存储目录（相对工作目录）；环境变量 UPLOAD_ROOT
+    upload_root: str = "uploads"
+
 
 @lru_cache
 def get_settings() -> Settings:

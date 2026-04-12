@@ -22,8 +22,18 @@ const router = createRouter({
         },
         {
           path: "users",
-          name: "users",
+          redirect: "/system/users",
+        },
+        {
+          path: "system/users",
+          name: "system-users",
           component: () => import("@/views/users/UserList.vue"),
+          meta: { roles: ["admin"] },
+        },
+        {
+          path: "system/roles",
+          name: "system-roles",
+          component: () => import("@/views/system/RoleList.vue"),
           meta: { roles: ["admin"] },
         },
         {
@@ -67,11 +77,10 @@ const router = createRouter({
           name: "attempt-detail",
           component: () => import("@/views/exam/AttemptDetail.vue"),
         },
-        /* 系统管理（管理员） */
         {
           path: "system/enterprise",
           name: "system-enterprise",
-          component: () => import("@/views/placeholder/ModulePlaceholder.vue"),
+          component: () => import("@/views/system/EnterpriseList.vue"),
           meta: { roles: ["admin"], title: "企业信息" },
         },
         {

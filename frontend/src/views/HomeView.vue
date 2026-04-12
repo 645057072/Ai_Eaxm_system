@@ -14,7 +14,7 @@
     </p>
     <p v-if="auth.isAdmin" class="hint">
       <AppEmoji name="users" size="sm" decorative />
-      您可使用「用户管理」维护账号与角色。
+      请在「系统管理 → 用户管理」下使用「用户信息」「角色权限」维护账号与角色。
     </p>
   </el-card>
 </template>

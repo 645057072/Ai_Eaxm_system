@@ -37,6 +37,9 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       SECRET_KEY: ${SECRET_KEY:-change-me-docker-demo-only}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://127.0.0.1,http://47.93.44.247}
+      UPLOAD_ROOT: /app/uploads
+    volumes:
+      - exam_uploads:/app/uploads
     expose:
       - "8000"
     # 仅本机可访问，便于在 ECS 上 curl 调试：curl -s http://127.0.0.1:8000/health
@@ -71,3 +74,4 @@ services:
 
 volumes:
   mysql_data:
+  exam_uploads:

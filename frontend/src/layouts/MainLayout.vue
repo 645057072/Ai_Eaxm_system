@@ -5,16 +5,9 @@
         <AppEmoji name="brand" size="lg" decorative />
         <span class="brand-text">考试系统</span>
       </div>
-      <el-menu
-        :default-active="route.path"
-        :default-openeds="systemMenuOpeneds"
-        router
-      >
+      <el-menu :default-active="route.path" router>
         <el-menu-item index="/">
           <span class="menu-item-inner"><AppEmoji name="home" size="sm" decorative />首页</span>
-        </el-menu-item>
-        <el-menu-item v-if="auth.isAdmin" index="/users">
-          <span class="menu-item-inner"><AppEmoji name="users" size="sm" decorative />用户管理</span>
         </el-menu-item>
         <el-menu-item v-if="auth.isTeacher" index="/questions">
           <span class="menu-item-inner"><AppEmoji name="questionBank" size="sm" decorative />题库</span>
@@ -29,11 +22,22 @@
           <span class="menu-item-inner"><AppEmoji name="availableExams" size="sm" decorative />可参加的考试</span>
         </el-menu-item>
 
-        <!-- 系统管理：多级菜单（仅管理员） -->
+        <!-- 系统管理：多级菜单（仅管理员），默认不展开 -->
         <el-sub-menu v-if="auth.isAdmin" index="sys-root">
           <template #title>
             <span class="menu-item-inner"><AppEmoji name="systemMgmt" size="sm" decorative />系统管理</span>
           </template>
+          <el-sub-menu index="sys-users-tree">
+            <template #title>
+              <span class="submenu-title"><AppEmoji name="users" size="sm" decorative />用户管理</span>
+            </template>
+            <el-menu-item index="/system/users">
+              <span class="menu-item-inner"><AppEmoji name="userInfo" size="sm" decorative />用户信息</span>
+            </el-menu-item>
+            <el-menu-item index="/system/roles">
+              <span class="menu-item-inner"><AppEmoji name="rolePerm" size="sm" decorative />角色权限</span>
+            </el-menu-item>
+          </el-sub-menu>
           <el-sub-menu index="sys-basic">
             <template #title>
               <span class="submenu-title"><AppEmoji name="basicInfo" size="sm" decorative />基础信息</span>
@@ -92,12 +96,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-
-/** 系统管理下各级子菜单默认展开，便于定位 */
-const systemMenuOpeneds = ref(["sys-root", "sys-basic", "sys-settings", "sys-supervision"]);
 
 const auth = useAuthStore();
 const route = useRoute();

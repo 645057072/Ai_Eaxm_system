@@ -43,6 +43,9 @@ export const SYSTEM_EMOJI = {
   printSettings: "\u{1F5BC}\uFE0F",
   onlineUsers: "\u{1F465}",
   logMgmt: "\u{1F4DC}",
+  /** 用户管理子菜单 */
+  userInfo: "\u{1F464}",
+  rolePerm: "\u{1F512}",
 } as const;
 
 export type SystemEmojiKey = keyof typeof SYSTEM_EMOJI;
