@@ -67,58 +67,73 @@
       <div v-if="permLoading" class="perm-loading">加载中...</div>
       <template v-else>
         <p class="perm-tip">
-          模块 / 菜单 / 列表 / 表单以树形分组勾选；字段以横向标签勾选；操作类在下方勾选。新业务请在服务端 CATALOG 登记功能点。
+          按「功能模块」分组：同一模块内菜单、列表、表单为树形结构；列表/表单下附带其字段（横向标签）授权；底部为操作权限。新业务请在服务端 CATALOG 登记功能点。
         </p>
         <div class="perm-tree-wrap">
-          <div v-for="mod in treeMlf" :key="mod.module" class="perm-mod">
-            <div class="perm-mod-title">{{ mod.module }}</div>
-            <div v-for="g in mod.groups" :key="mod.module + g.name" class="perm-group-block">
-              <div class="perm-sub-title">{{ g.name }}</div>
-              <div v-if="g.menus.length" class="perm-row">
-                <span class="perm-kind">菜单</span>
-                <el-checkbox-group v-model="selectedList" class="perm-inline-group">
-                  <el-checkbox v-for="it in g.menus" :key="it.code" :value="it.code">{{ it.name }}</el-checkbox>
-                </el-checkbox-group>
-              </div>
-              <div v-if="g.lists.length" class="perm-row">
+          <div v-for="mod in authModules" :key="mod.moduleKey" class="perm-fm-mod">
+            <div class="perm-mod-title">{{ mod.moduleTitle }}</div>
+            <div v-if="mod.menus.length" class="perm-row">
+              <span class="perm-kind">菜单</span>
+              <el-checkbox-group v-model="selectedList" class="perm-inline-group">
+                <el-checkbox v-for="m in mod.menus" :key="m.code" :value="m.code">{{ m.name }}</el-checkbox>
+              </el-checkbox-group>
+            </div>
+            <div v-for="row in mod.lists" :key="'l-' + row.item.code" class="perm-lf-card">
+              <div class="perm-lf-head">
                 <span class="perm-kind">列表</span>
-                <el-checkbox-group v-model="selectedList" class="perm-inline-group">
-                  <el-checkbox v-for="it in g.lists" :key="it.code" :value="it.code">{{ it.name }}</el-checkbox>
-                </el-checkbox-group>
+                <el-checkbox
+                  :model-value="selectedList.includes(row.item.code)"
+                  @change="(v: boolean | string | number) => toggleCode(row.item.code, !!v)"
+                >
+                  {{ row.item.name }}
+                </el-checkbox>
               </div>
-              <div v-if="g.forms.length" class="perm-row">
+              <div v-if="row.fields.length" class="perm-lf-fields">
+                <span class="perm-field-hint">字段</span>
+                <div class="field-tags">
+                  <el-check-tag
+                    v-for="it in row.fields"
+                    :key="it.code"
+                    :checked="selectedList.includes(it.code)"
+                    class="field-tag"
+                    @change="(on: boolean) => toggleCode(it.code, on)"
+                  >
+                    {{ it.name }}
+                  </el-check-tag>
+                </div>
+              </div>
+            </div>
+            <div v-for="row in mod.forms" :key="'f-' + row.item.code" class="perm-lf-card">
+              <div class="perm-lf-head">
                 <span class="perm-kind">表单</span>
-                <el-checkbox-group v-model="selectedList" class="perm-inline-group">
-                  <el-checkbox v-for="it in g.forms" :key="it.code" :value="it.code">{{ it.name }}</el-checkbox>
-                </el-checkbox-group>
+                <el-checkbox
+                  :model-value="selectedList.includes(row.item.code)"
+                  @change="(v: boolean | string | number) => toggleCode(row.item.code, !!v)"
+                >
+                  {{ row.item.name }}
+                </el-checkbox>
+              </div>
+              <div v-if="row.fields.length" class="perm-lf-fields">
+                <span class="perm-field-hint">字段</span>
+                <div class="field-tags">
+                  <el-check-tag
+                    v-for="it in row.fields"
+                    :key="it.code"
+                    :checked="selectedList.includes(it.code)"
+                    class="field-tag"
+                    @change="(on: boolean) => toggleCode(it.code, on)"
+                  >
+                    {{ it.name }}
+                  </el-check-tag>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-        <div v-if="fieldGroups.length" class="perm-fields-block">
-          <div class="perm-section-title">字段授权（横向标签）</div>
-          <div v-for="fg in fieldGroups" :key="fg.label" class="perm-field-row">
-            <div class="perm-field-label">{{ fg.label }}</div>
-            <div class="field-tags">
-              <el-check-tag
-                v-for="it in fg.items"
-                :key="it.code"
-                :checked="selectedList.includes(it.code)"
-                class="field-tag"
-                @change="(on: boolean) => toggleCode(it.code, on)"
-              >
-                {{ it.name }}
-              </el-check-tag>
+            <div v-if="mod.actions.length" class="perm-act-block">
+              <span class="perm-kind">操作</span>
+              <el-checkbox-group v-model="selectedList" class="perm-inline-group">
+                <el-checkbox v-for="it in mod.actions" :key="it.code" :value="it.code">{{ it.name }}</el-checkbox>
+              </el-checkbox-group>
             </div>
-          </div>
-        </div>
-        <div v-if="actionGroups.length" class="perm-actions-block">
-          <div class="perm-section-title">操作权限</div>
-          <div v-for="ag in actionGroups" :key="ag.label" class="perm-group">
-            <div class="perm-label">{{ ag.label }}</div>
-            <el-checkbox-group v-model="selectedList" class="perm-inline-group">
-              <el-checkbox v-for="it in ag.items" :key="it.code" :value="it.code">{{ it.name }}</el-checkbox>
-            </el-checkbox-group>
           </div>
         </div>
         <div class="perm-actions">
@@ -133,11 +148,7 @@
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiErrorMessage } from "@/api/http";
-import {
-  fetchPermissionCatalog,
-  type CatalogMlfModule,
-  type CatalogItem,
-} from "@/api/permissions";
+import { fetchPermissionCatalog, type AuthModulePayload, type CatalogItem } from "@/api/permissions";
 import { listRoles, createRole, patchRole, deleteRole, fetchRolePermissions, saveRolePermissions } from "@/api/roles";
 import { useAuthStore } from "@/stores/auth";
 
@@ -159,9 +170,7 @@ const form = reactive({
 const permVisible = ref(false);
 const permLoading = ref(false);
 const permRoleId = ref<number | null>(null);
-const treeMlf = ref<CatalogMlfModule[]>([]);
-const fieldGroups = ref<{ label: string; items: CatalogItem[] }[]>([]);
-const actionGroups = ref<{ label: string; items: CatalogItem[] }[]>([]);
+const authModules = ref<AuthModulePayload[]>([]);
 const selectedList = ref<string[]>([]);
 
 function toggleCode(code: string, on: boolean) {
@@ -214,9 +223,7 @@ async function openPerm(row: Record<string, unknown>) {
       fetchPermissionCatalog(),
       fetchRolePermissions(row.id as number),
     ]);
-    treeMlf.value = cat.treeMlf?.length ? cat.treeMlf : [];
-    fieldGroups.value = cat.fieldGroups?.length ? cat.fieldGroups : [];
-    actionGroups.value = cat.actionGroups?.length ? cat.actionGroups : [];
+    authModules.value = cat.authModules?.length ? cat.authModules : [];
     selectedList.value = [...codes];
   } catch (e) {
     ElMessage.error(apiErrorMessage(e, "加载授权数据失败"));
@@ -239,9 +246,7 @@ async function savePerm() {
 
 function onPermDialogClosed() {
   permRoleId.value = null;
-  treeMlf.value = [];
-  fieldGroups.value = [];
-  actionGroups.value = [];
+  authModules.value = [];
   selectedList.value = [];
 }
 
@@ -400,5 +405,46 @@ onMounted(load);
 }
 .field-tag {
   margin: 0;
+}
+.perm-fm-mod {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e8ecf0;
+}
+.perm-fm-mod:last-child {
+  border-bottom: none;
+}
+.perm-lf-card {
+  margin: 10px 0 10px 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+.perm-lf-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.perm-lf-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  padding-left: 50px;
+}
+.perm-field-hint {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: #94a3b8;
+  padding-top: 4px;
+}
+.perm-act-block {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 8px;
+  flex-wrap: wrap;
 }
 </style>

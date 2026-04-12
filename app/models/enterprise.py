@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.course import Course
     from app.models.user import User
 
 
@@ -31,3 +32,4 @@ class Enterprise(Base):
     )
 
     users: Mapped[List["User"]] = relationship("User", back_populates="enterprise")
+    courses: Mapped[List["Course"]] = relationship("Course", back_populates="enterprise")

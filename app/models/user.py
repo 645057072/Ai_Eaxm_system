@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.course import Course
     from app.models.enterprise import Enterprise
     from app.models.exam import ExamPaper, ExamSession, ExamAttempt
     from app.models.question import Question
@@ -67,3 +68,4 @@ class User(Base):
         foreign_keys="ExamSession.created_by",
     )
     attempts: Mapped[List["ExamAttempt"]] = relationship(back_populates="user")
+    courses_created: Mapped[List["Course"]] = relationship("Course", back_populates="creator")

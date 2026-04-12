@@ -87,7 +87,7 @@ const router = createRouter({
         {
           path: "system/course",
           name: "system-course",
-          component: () => import("@/views/placeholder/ModulePlaceholder.vue"),
+          component: () => import("@/views/system/CourseList.vue"),
           meta: { permission: "menu.system.course", title: "课程信息" },
         },
         {

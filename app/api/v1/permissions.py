@@ -10,6 +10,7 @@ from app.core.permission_catalog import (
     catalog_action_groups,
     catalog_by_kind_sections,
     catalog_field_tag_groups,
+    catalog_function_module_tree,
     catalog_groups,
     catalog_mlf_tree,
 )
@@ -29,4 +30,5 @@ def get_permission_catalog(
         "treeMlf": catalog_mlf_tree(),
         "fieldGroups": catalog_field_tag_groups(),
         "actionGroups": catalog_action_groups(),
+        "authModules": catalog_function_module_tree(),
     }

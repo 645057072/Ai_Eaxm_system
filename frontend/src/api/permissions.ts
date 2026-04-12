@@ -20,6 +20,16 @@ export type CatalogMlfModule = {
   groups: CatalogMlfGroup[];
 };
 
+/** 功能模块聚合：菜单、列表/表单及所含字段、操作 */
+export type AuthModulePayload = {
+  moduleKey: string;
+  moduleTitle: string;
+  menus: CatalogItem[];
+  lists: { item: CatalogItem; fields: CatalogItem[] }[];
+  forms: { item: CatalogItem; fields: CatalogItem[] }[];
+  actions: CatalogItem[];
+};
+
 export function fetchPermissionCatalog() {
   return http.get<{
     groups: { label: string; items: CatalogItem[] }[];
@@ -27,5 +37,6 @@ export function fetchPermissionCatalog() {
     treeMlf: CatalogMlfModule[];
     fieldGroups: { label: string; items: CatalogItem[] }[];
     actionGroups: { label: string; items: CatalogItem[] }[];
+    authModules: AuthModulePayload[];
   }>("/v1/permissions/catalog");
 }

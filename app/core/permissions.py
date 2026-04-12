@@ -36,6 +36,8 @@ def permission_match(granted: Set[str], code: str) -> bool:
         return True
     if code.startswith("field.enterprise.") and "form.enterprise" in granted:
         return True
+    if code.startswith("field.course.") and ("form.course" in granted or "list.course" in granted):
+        return True
     return False
 
 

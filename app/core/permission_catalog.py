@@ -5,7 +5,7 @@
 并保证 app.core.permission_catalog.ALL_CODES 与路由 meta.permission 一致，否则授权界面不会出现新功能点。
 """
 
-from typing import Any, List, TypedDict
+from typing import Any, Dict, List, Tuple, TypedDict
 
 
 class CatalogItem(TypedDict):
@@ -37,10 +37,12 @@ CATALOG: List[CatalogItem] = [
     {"code": "list.user", "name": "用户列表", "label": "列表资源", "kind": "list"},
     {"code": "list.role", "name": "角色列表", "label": "列表资源", "kind": "list"},
     {"code": "list.enterprise", "name": "企业列表", "label": "列表资源", "kind": "list"},
+    {"code": "list.course", "name": "课程列表", "label": "列表资源", "kind": "list"},
     {"code": "list.attempt", "name": "答卷记录", "label": "列表资源", "kind": "list"},
     {"code": "form.user", "name": "用户表单", "label": "表单", "kind": "form"},
     {"code": "form.enterprise", "name": "企业表单", "label": "表单", "kind": "form"},
     {"code": "form.role", "name": "角色表单", "label": "表单", "kind": "form"},
+    {"code": "form.course", "name": "课程表单", "label": "表单", "kind": "form"},
     {"code": "field.user.username", "name": "用户名", "label": "字段-用户", "kind": "field"},
     {"code": "field.user.password", "name": "密码", "label": "字段-用户", "kind": "field"},
     {"code": "field.user.full_name", "name": "姓名", "label": "字段-用户", "kind": "field"},
@@ -49,6 +51,11 @@ CATALOG: List[CatalogItem] = [
     {"code": "field.user.is_active", "name": "启用", "label": "字段-用户", "kind": "field"},
     {"code": "field.enterprise.license", "name": "营业执照附件", "label": "字段-企业", "kind": "field"},
     {"code": "field.enterprise.tax_id", "name": "纳税人识别号", "label": "字段-企业", "kind": "field"},
+    {"code": "field.course.name", "name": "课程名称", "label": "字段-课程", "kind": "field"},
+    {"code": "field.course.instructor", "name": "讲师", "label": "字段-课程", "kind": "field"},
+    {"code": "field.course.period", "name": "课程期间", "label": "字段-课程", "kind": "field"},
+    {"code": "field.course.description", "name": "课程简介", "label": "字段-课程", "kind": "field"},
+    {"code": "field.course.enterprise", "name": "所属企业", "label": "字段-课程", "kind": "field"},
     {"code": "action.user.create", "name": "新建用户", "label": "操作", "kind": "action"},
     {"code": "action.user.update", "name": "编辑用户", "label": "操作", "kind": "action"},
     {"code": "action.user.delete", "name": "删除用户", "label": "操作", "kind": "action"},
@@ -59,6 +66,9 @@ CATALOG: List[CatalogItem] = [
     {"code": "action.enterprise.create", "name": "新建企业", "label": "操作", "kind": "action"},
     {"code": "action.enterprise.update", "name": "编辑企业", "label": "操作", "kind": "action"},
     {"code": "action.enterprise.delete", "name": "删除企业", "label": "操作", "kind": "action"},
+    {"code": "action.course.create", "name": "新建课程", "label": "操作", "kind": "action"},
+    {"code": "action.course.update", "name": "编辑课程", "label": "操作", "kind": "action"},
+    {"code": "action.course.delete", "name": "删除课程", "label": "操作", "kind": "action"},
     {"code": "action.question.manage", "name": "题目维护", "label": "操作", "kind": "action"},
     {"code": "action.paper.manage", "name": "试卷维护", "label": "操作", "kind": "action"},
     {"code": "action.session.manage", "name": "场次维护", "label": "操作", "kind": "action"},
@@ -185,3 +195,111 @@ def catalog_action_groups() -> List[dict[str, Any]]:
             order.append(lb)
         buckets[lb].append(it)
     return [{"label": lb, "items": buckets[lb]} for lb in order]
+
+
+# 功能点 code -> (module_key, module_title)，前缀自左向右优先匹配
+_MODULE_RULES: List[Tuple[str, str, str]] = [
+    ("menu.home", "nav", "导航与入口"),
+    ("menu.exam.", "exam", "考试业务"),
+    ("menu.system.users", "sys_user", "系统管理-用户"),
+    ("menu.system.roles", "sys_user", "系统管理-用户"),
+    ("menu.system.enterprise", "sys_base", "系统管理-基础信息"),
+    ("menu.system.course", "sys_base", "系统管理-基础信息"),
+    ("menu.system.document", "sys_settings", "系统管理-设置中心"),
+    ("menu.system.print", "sys_settings", "系统管理-设置中心"),
+    ("menu.system.online", "sys_supervision", "系统管理-监管服务"),
+    ("menu.system.logs", "sys_supervision", "系统管理-监管服务"),
+    ("menu.bi", "data_bi", "数据分析"),
+    ("list.question", "exam", "考试业务"),
+    ("list.paper", "exam", "考试业务"),
+    ("list.session", "exam", "考试业务"),
+    ("list.attempt", "exam", "考试业务"),
+    ("list.user", "sys_user", "系统管理-用户"),
+    ("list.role", "sys_user", "系统管理-用户"),
+    ("list.enterprise", "sys_base", "系统管理-基础信息"),
+    ("list.course", "sys_base", "系统管理-基础信息"),
+    ("form.user", "sys_user", "系统管理-用户"),
+    ("form.role", "sys_user", "系统管理-用户"),
+    ("form.enterprise", "sys_base", "系统管理-基础信息"),
+    ("form.course", "sys_base", "系统管理-基础信息"),
+    ("field.user.", "sys_user", "系统管理-用户"),
+    ("field.enterprise.", "sys_base", "系统管理-基础信息"),
+    ("field.course.", "sys_base", "系统管理-基础信息"),
+    ("action.user.", "sys_user", "系统管理-用户"),
+    ("action.role.", "sys_user", "系统管理-用户"),
+    ("action.enterprise.", "sys_base", "系统管理-基础信息"),
+    ("action.course.", "sys_base", "系统管理-基础信息"),
+    ("action.question.", "exam", "考试业务"),
+    ("action.paper.", "exam", "考试业务"),
+    ("action.session.", "exam", "考试业务"),
+    ("action.exam.", "exam", "考试业务"),
+]
+
+_FUNCTION_MODULE_ORDER = (
+    "nav",
+    "exam",
+    "sys_user",
+    "sys_base",
+    "sys_settings",
+    "sys_supervision",
+    "data_bi",
+    "other",
+)
+
+
+def _module_for_code(code: str) -> Tuple[str, str]:
+    for prefix, mk, mt in _MODULE_RULES:
+        if code == prefix or code.startswith(prefix):
+            return (mk, mt)
+    return ("other", "其他")
+
+
+def _entity_from_list_or_form(code: str) -> str | None:
+    parts = code.split(".")
+    if len(parts) >= 2 and parts[0] in ("list", "form"):
+        return parts[1]
+    return None
+
+
+def _fields_for_entity(entity: str) -> List[CatalogItem]:
+    prefix = f"field.{entity}."
+    return [it for it in CATALOG if it.get("kind") == "field" and it["code"].startswith(prefix)]
+
+
+def catalog_function_module_tree() -> List[Dict[str, Any]]:
+    """按功能模块聚合：每模块下菜单、列表/表单及其所含字段树，另附操作点。"""
+    buckets: Dict[str, Dict[str, Any]] = {}
+
+    for it in CATALOG:
+        kind = it.get("kind")
+        if kind == "field":
+            continue
+        mk, mt = _module_for_code(it["code"])
+        if mk not in buckets:
+            buckets[mk] = {
+                "moduleKey": mk,
+                "moduleTitle": mt,
+                "menus": [],
+                "lists": [],
+                "forms": [],
+                "actions": [],
+            }
+        if kind == "menu":
+            buckets[mk]["menus"].append(it)
+        elif kind == "list":
+            # 字段与列表、表单共用，挂在「表单」节点展示，避免同一字段标签重复出现
+            buckets[mk]["lists"].append({"item": it, "fields": []})
+        elif kind == "form":
+            ent = _entity_from_list_or_form(it["code"])
+            flist = _fields_for_entity(ent) if ent else []
+            buckets[mk]["forms"].append({"item": it, "fields": flist})
+        elif kind == "action":
+            buckets[mk]["actions"].append(it)
+
+    def _sort_key(mk: str) -> int:
+        try:
+            return _FUNCTION_MODULE_ORDER.index(mk)
+        except ValueError:
+            return len(_FUNCTION_MODULE_ORDER)
+
+    return [buckets[k] for k in sorted(buckets.keys(), key=_sort_key)]
