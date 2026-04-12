@@ -6,8 +6,11 @@ import zhCn from "element-plus/es/locale/lang/zh-cn";
 import * as ElementPlusIconsVue from "@element-plus/icons-vue";
 import App from "./App.vue";
 import router from "./router";
+import AppEmoji from "./components/AppEmoji.vue";
+import "./assets/styles/system-shell.css";
 
 const app = createApp(App);
+app.component("AppEmoji", AppEmoji);
 const pinia = createPinia();
 app.use(pinia);
 app.use(router);

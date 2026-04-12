@@ -1,0 +1,25 @@
+/* 主系统壳层：与侧栏、顶栏协调的浅色背景 */
+.layout .main {
+  background: linear-gradient(180deg, #f4f6f9 0%, #eef1f6 100%);
+  padding: 20px;
+}
+
+.layout .main .el-card {
+  border-radius: 10px;
+  border: 1px solid #e4e8ef;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* 列表工具条与链接按钮内 emoji 与文字间距 */
+.toolbar .el-button .app-emoji,
+.layout .header .el-button .app-emoji,
+.el-button.is-link .app-emoji {
+  margin-right: 4px;
+}
+
+/* 侧栏菜单项：图标与文字间距 */
+.menu-item-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

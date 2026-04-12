@@ -2,8 +2,8 @@
   <el-card v-loading="loading">
     <template #header>
       <div class="hdr">
-        <span>试卷 #{{ id }} {{ paper?.title }}</span>
-        <el-button @click="$router.back()">返回</el-button>
+        <span><AppEmoji name="papers" size="sm" decorative />试卷 #{{ id }} {{ paper?.title }}</span>
+        <el-button @click="$router.back()"><AppEmoji name="back" size="sm" decorative />返回</el-button>
       </div>
     </template>
     <p>时长：{{ paper?.duration_minutes }} 分钟，总分：{{ paper?.total_score }}</p>
@@ -11,7 +11,7 @@
       <el-input-number v-model="addQid" :min="1" placeholder="题目ID" />
       <el-input-number v-model="addScore" :min="0" :step="0.5" />
       <el-input-number v-model="addOrder" :min="0" />
-      <el-button type="primary" @click="addItem">加入试卷</el-button>
+      <el-button type="primary" @click="addItem"><AppEmoji name="addToPaper" size="sm" decorative />加入试卷</el-button>
     </div>
     <el-table :data="paper?.items || []">
       <el-table-column prop="sort_order" label="序" width="70" />
@@ -22,7 +22,7 @@
       </el-table-column>
       <el-table-column label="操作" width="100">
         <template #default="{ row }">
-          <el-button link type="danger" @click="remove(row)">移除</el-button>
+          <el-button link type="danger" @click="remove(row)"><AppEmoji name="remove" size="sm" decorative />移除</el-button>
         </template>
       </el-table-column>
     </el-table>

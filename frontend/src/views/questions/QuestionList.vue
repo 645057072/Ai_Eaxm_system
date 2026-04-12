@@ -11,8 +11,8 @@
         <el-option label="草稿" value="draft" />
         <el-option label="已发布" value="published" />
       </el-select>
-      <el-button type="primary" @click="load">查询</el-button>
-      <el-button type="success" @click="openEdit()">新建题目</el-button>
+      <el-button type="primary" @click="load"><AppEmoji name="search" size="sm" decorative />查询</el-button>
+      <el-button type="success" @click="openEdit()"><AppEmoji name="add" size="sm" decorative />新建题目</el-button>
     </div>
     <el-table :data="rows">
       <el-table-column prop="id" label="ID" width="70" />
@@ -21,8 +21,8 @@
       <el-table-column prop="status" label="状态" width="90" />
       <el-table-column label="操作" width="160">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" @click="onDel(row)">删除</el-button>
+          <el-button link type="primary" @click="openEdit(row)"><AppEmoji name="edit" size="sm" decorative />编辑</el-button>
+          <el-button link type="danger" @click="onDel(row)"><AppEmoji name="delete" size="sm" decorative />删除</el-button>
         </template>
       </el-table-column>
     </el-table>

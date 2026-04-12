@@ -2,8 +2,8 @@
   <el-card v-loading="loading">
     <template #header>
       <div class="hdr">
-        <span>答卷 #{{ id }}</span>
-        <el-button @click="$router.back()">返回</el-button>
+        <span><AppEmoji name="list" size="sm" decorative />答卷 #{{ id }}</span>
+        <el-button @click="$router.back()"><AppEmoji name="back" size="sm" decorative />返回</el-button>
       </div>
     </template>
     <p v-if="att">状态：{{ att.status }}，总分：{{ att.total_score ?? "-" }}</p>

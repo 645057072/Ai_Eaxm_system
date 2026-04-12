@@ -3,8 +3,8 @@
     <template #header>
       <div class="hdr">
         <span>{{ title }}</span>
-        <el-button type="primary" @click="saveOnly">保存答案</el-button>
-        <el-button type="danger" @click="submit">交卷</el-button>
+        <el-button type="primary" @click="saveOnly"><AppEmoji name="save" size="sm" decorative />保存答案</el-button>
+        <el-button type="danger" @click="submit"><AppEmoji name="submitExam" size="sm" decorative />交卷</el-button>
       </div>
     </template>
     <div v-if="submittedTip" class="tip">{{ submittedTip }}</div>

@@ -2,23 +2,33 @@
   <el-card>
     <div class="toolbar">
       <el-input v-model="keyword" placeholder="用户名关键词" clearable style="width: 220px" />
-      <el-button type="primary" @click="load">查询</el-button>
-      <el-button type="success" @click="openCreate">新建用户</el-button>
+      <el-button type="primary" @click="load"><AppEmoji name="search" size="sm" decorative />查询</el-button>
+      <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建用户</el-button>
     </div>
     <el-table :data="rows" style="width: 100%">
       <el-table-column prop="id" label="ID" width="80" />
       <el-table-column prop="username" label="用户名" />
       <el-table-column prop="full_name" label="姓名" />
       <el-table-column label="角色">
-        <template #default="{ row }">{{ row.role?.name }}</template>
-      </el-table-column>
-      <el-table-column prop="is_active" label="启用" width="80">
-        <template #default="{ row }">{{ row.is_active ? "是" : "否" }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="200">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" @click="onDelete(row)">删除</el-button>
+          <span class="cell-with-ico">
+            <AppEmoji :name="roleKey(row)" size="sm" decorative />
+            {{ row.role?.name }}
+          </span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="is_active" label="启用" width="100">
+        <template #default="{ row }">
+          <span class="cell-with-ico">
+            <AppEmoji :name="row.is_active ? 'enabledYes' : 'enabledNo'" size="sm" decorative />
+            {{ row.is_active ? "是" : "否" }}
+          </span>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="220">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="openEdit(row)"><AppEmoji name="edit" size="sm" decorative />编辑</el-button>
+          <el-button link type="danger" @click="onDelete(row)"><AppEmoji name="delete" size="sm" decorative />删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -61,6 +71,12 @@ import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { listUsers, createUser, patchUser, deleteUser } from "@/api/users";
 import { listRoles } from "@/api/roles";
+import { systemEmojiRoleKey, type SystemEmojiKey } from "@/assets/emoji/systemEmoji";
+
+function roleKey(row: Record<string, unknown>): SystemEmojiKey {
+  const code = (row.role as { code?: string } | undefined)?.code;
+  return systemEmojiRoleKey(code);
+}
 
 const rows = ref<Record<string, unknown>[]>([]);
 const total = ref(0);
@@ -159,5 +175,10 @@ onMounted(async () => {
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
+}
+.cell-with-ico {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 </style>

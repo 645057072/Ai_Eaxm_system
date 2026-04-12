@@ -4,7 +4,12 @@
     <div class="glow glow-a" aria-hidden="true" />
     <div class="glow glow-b" aria-hidden="true" />
     <el-card class="card" shadow="always">
-      <template #header>考试系统登录</template>
+      <template #header>
+        <div class="card-title">
+          <AppEmoji name="login" size="lg" decorative />
+          <span>考试系统登录</span>
+        </div>
+      </template>
       <el-form @submit.prevent="onSubmit" label-position="top">
         <el-form-item label="用户名">
           <el-input v-model="username" autocomplete="username" />
@@ -12,7 +17,9 @@
         <el-form-item label="密码">
           <el-input v-model="password" type="password" autocomplete="current-password" />
         </el-form-item>
-        <el-button type="primary" native-type="submit" :loading="loading" class="btn-login">登录</el-button>
+        <el-button type="primary" native-type="submit" :loading="loading" class="btn-login">
+          <AppEmoji name="login" size="sm" decorative />登录
+        </el-button>
       </el-form>
     </el-card>
   </div>
@@ -85,6 +92,12 @@ async function onSubmit() {
   right: -160px;
   bottom: 0;
   background: radial-gradient(circle, #6b5cff 0%, transparent 70%);
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .card {

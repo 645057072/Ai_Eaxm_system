@@ -1,7 +1,7 @@
 <template>
   <el-card>
     <div class="toolbar">
-      <el-button type="success" @click="openCreate">新建场次</el-button>
+      <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建场次</el-button>
     </div>
     <el-table :data="rows">
       <el-table-column prop="id" label="ID" width="70" />
@@ -16,8 +16,10 @@
       </el-table-column>
       <el-table-column label="操作" width="220">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="row.status !== 'published'" link type="success" @click="publish(row)">发布</el-button>
+          <el-button link type="primary" @click="openEdit(row)"><AppEmoji name="edit" size="sm" decorative />编辑</el-button>
+          <el-button v-if="row.status !== 'published'" link type="success" @click="publish(row)"
+            ><AppEmoji name="publish" size="sm" decorative />发布</el-button
+          >
         </template>
       </el-table-column>
     </el-table>

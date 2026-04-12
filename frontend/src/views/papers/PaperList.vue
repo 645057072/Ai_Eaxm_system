@@ -1,7 +1,7 @@
 <template>
   <el-card>
     <div class="toolbar">
-      <el-button type="success" @click="openCreate">新建试卷</el-button>
+      <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建试卷</el-button>
     </div>
     <el-table :data="rows">
       <el-table-column prop="id" label="ID" width="70" />
@@ -10,8 +10,10 @@
       <el-table-column prop="total_score" label="总分" width="90" />
       <el-table-column label="操作" width="200">
         <template #default="{ row }">
-          <el-button link type="primary" @click="$router.push('/papers/' + row.id)">组卷</el-button>
-          <el-button link type="danger" @click="onDel(row)">删除</el-button>
+          <el-button link type="primary" @click="$router.push('/papers/' + row.id)"
+            ><AppEmoji name="compose" size="sm" decorative />组卷</el-button
+          >
+          <el-button link type="danger" @click="onDel(row)"><AppEmoji name="delete" size="sm" decorative />删除</el-button>
         </template>
       </el-table-column>
     </el-table>

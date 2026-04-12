@@ -6,7 +6,9 @@
       <el-table-column prop="paper_id" label="试卷ID" width="90" />
       <el-table-column label="操作" width="140">
         <template #default="{ row }">
-          <el-button type="primary" link @click="goTake(row.id)">进入考试</el-button>
+          <el-button type="primary" link @click="goTake(row.id)"
+            ><AppEmoji name="enterExam" size="sm" decorative />进入考试</el-button
+          >
         </template>
       </el-table-column>
     </el-table>
