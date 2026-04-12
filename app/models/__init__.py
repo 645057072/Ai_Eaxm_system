@@ -3,11 +3,13 @@
 
 from app.models.enterprise import Enterprise
 from app.models.exam import ExamAttempt, ExamAnswer, ExamPaper, ExamPaperItem, ExamSession
+from app.models.permission import RolePermission
 from app.models.question import Question
 from app.models.user import Role, User
 
 __all__ = [
     "Enterprise",
+    "RolePermission",
     "Role",
     "User",
     "Question",

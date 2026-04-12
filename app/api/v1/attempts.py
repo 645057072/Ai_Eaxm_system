@@ -3,17 +3,18 @@
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.deps import get_db, require_roles
+from app.api.deps import get_current_user, get_db, require_permission
+from app.core.permissions import has_permission
 from app.models.exam import ExamAnswer, ExamAttempt, ExamPaperItem, ExamSession
 from app.models.question import Question
 from app.models.user import User
 from app.schemas.attempt import AnswersBatchIn, ExamAttemptOut
+from app.services.data_scope import ensure_same_enterprise
 from app.services.grading import score_for_question
 
 router = APIRouter(prefix="/attempts", tags=["考试作答"])
@@ -26,10 +27,10 @@ def _now() -> datetime:
 @router.get("/{attempt_id}", response_model=ExamAttemptOut)
 def get_attempt(
     attempt_id: int,
-    db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_roles("admin", "teacher", "student"))],
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
 ) -> ExamAttemptOut:
-    """查询作答记录（考生仅本人）。"""
+    """查询作答记录：本人需 action.exam.take；查看他人需 list.attempt 且同企业。"""
     att = db.scalars(
         select(ExamAttempt)
         .options(joinedload(ExamAttempt.answers))
@@ -37,8 +38,16 @@ def get_attempt(
     ).first()
     if att is None:
         raise HTTPException(status_code=404, detail="作答记录不存在")
-    if current.role.code == "student" and att.user_id != current.id:
+    if att.user_id == current.id:
+        if not has_permission(db, current, "action.exam.take"):
+            raise HTTPException(status_code=403, detail="无权查看")
+        return ExamAttemptOut.model_validate(att)
+    if not has_permission(db, current, "list.attempt"):
         raise HTTPException(status_code=403, detail="无权查看他人答卷")
+    owner = db.get(User, att.user_id)
+    if owner is None:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    ensure_same_enterprise(current, owner.enterprise_id)
     return ExamAttemptOut.model_validate(att)
 
 
@@ -46,8 +55,8 @@ def get_attempt(
 def save_answers(
     attempt_id: int,
     body: AnswersBatchIn,
-    db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_roles("student"))],
+    db: Session = Depends(get_db),
+    current: User = Depends(require_permission("action.exam.take")),
 ) -> ExamAttemptOut:
     """批量保存答案（覆盖同题）。"""
     att = db.get(ExamAttempt, attempt_id)
@@ -91,8 +100,8 @@ def save_answers(
 @router.post("/{attempt_id}/submit", response_model=ExamAttemptOut)
 def submit_attempt(
     attempt_id: int,
-    db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_roles("student"))],
+    db: Session = Depends(get_db),
+    current: User = Depends(require_permission("action.exam.take")),
 ) -> ExamAttemptOut:
     """交卷并客观题自动阅卷。"""
     att = db.scalars(

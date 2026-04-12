@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core.permissions import has_any_permission, has_permission
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.user import User
@@ -45,6 +46,34 @@ def require_roles(*codes: str):
         rcode = user.role.code if user.role else ""
         if rcode not in codes:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="权限不足")
+        return user
+
+    return _inner
+
+
+def require_permission(code: str):
+    """要求具备指定功能点（管理员角色不受限）。"""
+
+    def _inner(
+        user: Annotated[User, Depends(get_current_user)],
+        db: Annotated[Session, Depends(get_db)],
+    ) -> User:
+        if not has_permission(db, user, code):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无访问权限")
+        return user
+
+    return _inner
+
+
+def require_any_permission(*codes: str):
+    """具备任一功能点即可。"""
+
+    def _inner(
+        user: Annotated[User, Depends(get_current_user)],
+        db: Annotated[Session, Depends(get_db)],
+    ) -> User:
+        if not has_any_permission(db, user, *codes):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无访问权限")
         return user
 
     return _inner

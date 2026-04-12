@@ -8,19 +8,23 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
-from app.api.deps import require_roles
+from app.api.deps import require_any_permission
 from app.core.config import get_settings
 from app.models.user import User
 
 router = APIRouter()
 
+# 与 enterprises 上传命名 ent_{id}_{uuid.hex}.{ext} 一致
 _FILENAME_SAFE = re.compile(r"^ent_\d+_[a-f0-9]{32}\.[A-Za-z0-9]+$")
 
 
 @router.get("/{filename}")
 def download_file(
     filename: str,
-    _: Annotated[User, Depends(require_roles("admin"))],
+    _: Annotated[
+        User,
+        Depends(require_any_permission("list.enterprise", "action.enterprise.update", "field.enterprise.license")),
+    ],
 ) -> FileResponse:
     if not _FILENAME_SAFE.match(filename):
         raise HTTPException(status_code=404, detail="文件不存在")

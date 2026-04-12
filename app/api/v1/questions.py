@@ -6,11 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db, require_roles
+from app.api.deps import get_db, require_any_permission, require_permission
 from app.models.question import Question
 from app.models.user import User
 from app.schemas.common import PageParams, PageResult
 from app.schemas.question import QuestionCreate, QuestionOut, QuestionUpdate
+from app.services.data_scope import assert_question_in_enterprise
 
 router = APIRouter()
 
@@ -18,19 +19,28 @@ router = APIRouter()
 @router.get("", response_model=PageResult[QuestionOut])
 def list_questions(
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[User, Depends(require_permission("list.question"))],
     page: Annotated[PageParams, Depends()],
     q_type: str | None = None,
     status: str | None = None,
 ) -> PageResult[QuestionOut]:
-    """题目列表。"""
-    stmt = select(func.count()).select_from(Question)
+    """本企业用户创建的题目列表。"""
+    stmt = (
+        select(func.count())
+        .select_from(Question)
+        .join(User, Question.created_by == User.id)
+        .where(User.enterprise_id == current.enterprise_id)
+    )
     if q_type:
         stmt = stmt.where(Question.q_type == q_type)
     if status:
         stmt = stmt.where(Question.status == status)
     total = db.scalar(stmt) or 0
-    q = select(Question)
+    q = (
+        select(Question)
+        .join(User, Question.created_by == User.id)
+        .where(User.enterprise_id == current.enterprise_id)
+    )
     if q_type:
         q = q.where(Question.q_type == q_type)
     if status:
@@ -43,7 +53,7 @@ def list_questions(
 def create_question(
     body: QuestionCreate,
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[User, Depends(require_permission("action.question.manage"))],
 ) -> QuestionOut:
     """新增题目。"""
     obj = Question(
@@ -66,11 +76,12 @@ def create_question(
 def get_question(
     question_id: int,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[
+        User,
+        Depends(require_any_permission("list.question", "action.question.manage")),
+    ],
 ) -> QuestionOut:
-    obj = db.get(Question, question_id)
-    if obj is None:
-        raise HTTPException(status_code=404, detail="题目不存在")
+    obj = assert_question_in_enterprise(db, current, question_id)
     return QuestionOut.model_validate(obj)
 
 
@@ -79,11 +90,9 @@ def update_question(
     question_id: int,
     body: QuestionUpdate,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[User, Depends(require_permission("action.question.manage"))],
 ) -> QuestionOut:
-    obj = db.get(Question, question_id)
-    if obj is None:
-        raise HTTPException(status_code=404, detail="题目不存在")
+    obj = assert_question_in_enterprise(db, current, question_id)
     data = body.model_dump(exclude_unset=True)
     for k, v in data.items():
         setattr(obj, k, v)
@@ -96,10 +105,8 @@ def update_question(
 def delete_question(
     question_id: int,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[User, Depends(require_permission("action.question.manage"))],
 ) -> None:
-    obj = db.get(Question, question_id)
-    if obj is None:
-        raise HTTPException(status_code=404, detail="题目不存在")
+    obj = assert_question_in_enterprise(db, current, question_id)
     db.delete(obj)
     db.commit()

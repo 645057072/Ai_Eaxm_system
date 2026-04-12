@@ -10,18 +10,17 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, require_roles
+from app.api.deps import get_db, require_permission
 from app.core.config import get_settings
 from app.models.enterprise import Enterprise
 from app.models.user import User
 from app.schemas.common import PageParams, PageResult
 from app.schemas.enterprise import EnterpriseCreate, EnterpriseOut, EnterpriseUpdate
+from app.services.data_scope import ensure_same_enterprise
 
 router = APIRouter()
 
-# 仅允许常见文档/图片作为营业执照附件
 _LICENSE_EXT = {".pdf", ".jpg", ".jpeg", ".png", ".webp"}
-_FILENAME_SAFE = re.compile(r"^ent_\d+_[a-f0-9\-]{36}\.[A-Za-z0-9]+$")
 
 
 def _upload_root() -> Path:
@@ -33,12 +32,18 @@ def _upload_root() -> Path:
 @router.get("", response_model=PageResult[EnterpriseOut])
 def list_enterprises(
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin"))],
+    current: Annotated[User, Depends(require_permission("list.enterprise"))],
     page: Annotated[PageParams, Depends()],
 ) -> PageResult[EnterpriseOut]:
-    total = db.scalar(select(func.count()).select_from(Enterprise)) or 0
+    """本企业档案（通常仅一条）。"""
+    stmt = select(func.count()).select_from(Enterprise).where(Enterprise.id == current.enterprise_id)
+    total = db.scalar(stmt) or 0
     rows = db.scalars(
-        select(Enterprise).offset(page.skip).limit(page.limit).order_by(Enterprise.id.desc())
+        select(Enterprise)
+        .where(Enterprise.id == current.enterprise_id)
+        .offset(page.skip)
+        .limit(page.limit)
+        .order_by(Enterprise.id.desc())
     ).all()
     return PageResult[EnterpriseOut](total=int(total), items=[EnterpriseOut.model_validate(r) for r in rows])
 
@@ -47,8 +52,9 @@ def list_enterprises(
 def create_enterprise(
     body: EnterpriseCreate,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin"))],
+    _: Annotated[User, Depends(require_permission("action.enterprise.create"))],
 ) -> EnterpriseOut:
+    """新建企业档案（多租户扩容用）。"""
     if db.scalar(select(func.count()).select_from(Enterprise).where(Enterprise.tax_id == body.tax_id)):
         raise HTTPException(status_code=400, detail="纳税人识别号已存在")
     e = Enterprise(
@@ -68,8 +74,9 @@ def create_enterprise(
 def get_enterprise(
     enterprise_id: int,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin"))],
+    current: Annotated[User, Depends(require_permission("list.enterprise"))],
 ) -> EnterpriseOut:
+    ensure_same_enterprise(current, enterprise_id)
     e = db.get(Enterprise, enterprise_id)
     if e is None:
         raise HTTPException(status_code=404, detail="企业不存在")
@@ -81,8 +88,9 @@ def update_enterprise(
     enterprise_id: int,
     body: EnterpriseUpdate,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin"))],
+    current: Annotated[User, Depends(require_permission("action.enterprise.update"))],
 ) -> EnterpriseOut:
+    ensure_same_enterprise(current, enterprise_id)
     e = db.get(Enterprise, enterprise_id)
     if e is None:
         raise HTTPException(status_code=404, detail="企业不存在")
@@ -109,11 +117,15 @@ def update_enterprise(
 def delete_enterprise(
     enterprise_id: int,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin"))],
+    current: Annotated[User, Depends(require_permission("action.enterprise.delete"))],
 ) -> None:
+    ensure_same_enterprise(current, enterprise_id)
     e = db.get(Enterprise, enterprise_id)
     if e is None:
         raise HTTPException(status_code=404, detail="企业不存在")
+    n = db.scalar(select(func.count()).select_from(User).where(User.enterprise_id == enterprise_id)) or 0
+    if n > 0:
+        raise HTTPException(status_code=400, detail="仍有用户归属该企业，无法删除")
     if e.license_file_path:
         fp = _upload_root() / e.license_file_path
         if fp.is_file():
@@ -126,9 +138,10 @@ def delete_enterprise(
 async def upload_license(
     enterprise_id: int,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin"))],
+    current: Annotated[User, Depends(require_permission("action.enterprise.update"))],
     file: UploadFile = File(...),
 ) -> EnterpriseOut:
+    ensure_same_enterprise(current, enterprise_id)
     e = db.get(Enterprise, enterprise_id)
     if e is None:
         raise HTTPException(status_code=404, detail="企业不存在")

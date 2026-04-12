@@ -1,1 +1,0 @@
-import{m as t}from"./index-Cck_ytTn.js";function l(){return t.get("/v1/roles")}function n(e){return t.post("/v1/roles",e)}function s(e,o){return t.patch(`/v1/roles/${e}`,o)}function a(e){return t.delete(`/v1/roles/${e}`)}export{n as c,a as d,l,s as p};

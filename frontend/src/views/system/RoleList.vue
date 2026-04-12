@@ -1,7 +1,9 @@
 <template>
   <el-card>
     <div class="toolbar">
-      <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建角色</el-button>
+      <el-button v-if="auth.can('action.role.create')" type="success" @click="openCreate"
+        ><AppEmoji name="add" size="sm" decorative />新建角色</el-button
+      >
     </div>
     <el-table :data="rows" style="width: 100%">
       <el-table-column prop="id" label="ID" width="70" />
@@ -11,10 +13,16 @@
       <el-table-column prop="created_at" label="创建时间" width="170">
         <template #default="{ row }">{{ fmtTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)"><AppEmoji name="edit" size="sm" decorative />编辑</el-button>
+          <el-button v-if="auth.can('action.role.permission')" link type="success" @click="openPerm(row)">
+            功能授权
+          </el-button>
+          <el-button v-if="auth.can('action.role.update')" link type="primary" @click="openEdit(row)"
+            ><AppEmoji name="edit" size="sm" decorative />编辑</el-button
+          >
           <el-button
+            v-if="auth.can('action.role.delete')"
             link
             type="danger"
             :disabled="isReserved(row.code as string)"
@@ -46,13 +54,35 @@
         <el-button type="primary" @click="save">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-drawer v-model="permVisible" title="功能授权" size="420px" destroy-on-close>
+      <div v-if="permLoading" class="perm-loading">加载中...</div>
+      <template v-else>
+        <p class="perm-tip">按标签勾选本角色可使用的菜单、列表、表单字段与操作；未授权则无法访问对应功能与数据。</p>
+        <div v-for="g in catalogGroups" :key="g.label" class="perm-group">
+          <div class="perm-label">{{ g.label }}</div>
+          <el-checkbox-group v-model="selectedList">
+            <el-checkbox v-for="it in g.items" :key="it.code" :label="it.code" class="perm-item">
+              {{ it.name }}（{{ it.kind }}）
+            </el-checkbox>
+          </el-checkbox-group>
+        </div>
+        <div class="perm-actions">
+          <el-button type="primary" @click="savePerm">保存授权</el-button>
+        </div>
+      </template>
+    </el-drawer>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { listRoles, createRole, patchRole, deleteRole } from "@/api/roles";
+import { fetchPermissionCatalog } from "@/api/permissions";
+import { listRoles, createRole, patchRole, deleteRole, fetchRolePermissions, saveRolePermissions } from "@/api/roles";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
 
 const RESERVED = new Set(["admin", "teacher", "student"]);
 
@@ -66,6 +96,12 @@ const form = reactive({
   name: "",
   description: "",
 });
+
+const permVisible = ref(false);
+const permLoading = ref(false);
+const permRoleId = ref<number | null>(null);
+const catalogGroups = ref<{ label: string; items: { code: string; name: string; kind: string }[] }[]>([]);
+const selectedList = ref<string[]>([]);
 
 function isReserved(code: string) {
   return RESERVED.has(code);
@@ -98,6 +134,45 @@ function openEdit(row: Record<string, unknown>) {
   form.description = (row.description as string) || "";
   dlg.value = true;
 }
+
+async function openPerm(row: Record<string, unknown>) {
+  permRoleId.value = row.id as number;
+  permLoading.value = true;
+  permVisible.value = true;
+  selectedList.value = [];
+  try {
+    const [{ data: cat }, { data: codes }] = await Promise.all([
+      fetchPermissionCatalog(),
+      fetchRolePermissions(row.id as number),
+    ]);
+    catalogGroups.value = cat.groups || [];
+    selectedList.value = [...codes];
+  } catch {
+    ElMessage.error("加载授权数据失败");
+    permVisible.value = false;
+  } finally {
+    permLoading.value = false;
+  }
+}
+
+async function savePerm() {
+  if (permRoleId.value == null) return;
+  try {
+    await saveRolePermissions(permRoleId.value, selectedList.value);
+    ElMessage.success("已保存功能授权");
+    permVisible.value = false;
+  } catch {
+    ElMessage.error("保存失败");
+  }
+}
+
+watch(permVisible, (v) => {
+  if (!v) {
+    permRoleId.value = null;
+    catalogGroups.value = [];
+    selectedList.value = [];
+  }
+});
 
 async function save() {
   if (!form.name.trim()) {
@@ -143,5 +218,32 @@ onMounted(load);
 <style scoped>
 .toolbar {
   margin-bottom: 12px;
+}
+.perm-tip {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+.perm-group {
+  margin-bottom: 16px;
+}
+.perm-label {
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 8px;
+}
+.perm-item {
+  display: block;
+  margin-left: 0;
+  margin-bottom: 6px;
+}
+.perm-actions {
+  margin-top: 20px;
+}
+.perm-loading {
+  padding: 24px;
+  text-align: center;
+  color: #64748b;
 }
 </style>

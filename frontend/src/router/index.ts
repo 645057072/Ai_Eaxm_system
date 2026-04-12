@@ -28,96 +28,97 @@ const router = createRouter({
           path: "system/users",
           name: "system-users",
           component: () => import("@/views/users/UserList.vue"),
-          meta: { roles: ["admin"] },
+          meta: { permission: "menu.system.users" },
         },
         {
           path: "system/roles",
           name: "system-roles",
           component: () => import("@/views/system/RoleList.vue"),
-          meta: { roles: ["admin"] },
+          meta: { permission: "menu.system.roles" },
         },
         {
           path: "questions",
           name: "questions",
           component: () => import("@/views/questions/QuestionList.vue"),
-          meta: { roles: ["admin", "teacher"] },
+          meta: { permission: "menu.exam.questions" },
         },
         {
           path: "papers",
           name: "papers",
           component: () => import("@/views/papers/PaperList.vue"),
-          meta: { roles: ["admin", "teacher"] },
+          meta: { permission: "menu.exam.papers" },
         },
         {
           path: "papers/:id",
           name: "paper-detail",
           component: () => import("@/views/papers/PaperDetail.vue"),
-          meta: { roles: ["admin", "teacher"] },
+          meta: { permission: "menu.exam.papers" },
         },
         {
           path: "sessions",
           name: "sessions",
           component: () => import("@/views/sessions/SessionList.vue"),
-          meta: { roles: ["admin", "teacher"] },
+          meta: { permission: "menu.exam.sessions" },
         },
         {
           path: "exam/available",
           name: "exam-available",
           component: () => import("@/views/exam/AvailableExams.vue"),
-          meta: { roles: ["student"] },
+          meta: { permission: "menu.exam.available" },
         },
         {
           path: "exam/take/:sessionId",
           name: "exam-take",
           component: () => import("@/views/exam/TakeExam.vue"),
-          meta: { roles: ["student"] },
+          meta: { permission: "action.exam.take" },
         },
         {
           path: "attempts/:id",
           name: "attempt-detail",
           component: () => import("@/views/exam/AttemptDetail.vue"),
+          meta: { permission: ["list.attempt", "action.exam.take"] },
         },
         {
           path: "system/enterprise",
           name: "system-enterprise",
           component: () => import("@/views/system/EnterpriseList.vue"),
-          meta: { roles: ["admin"], title: "企业信息" },
+          meta: { permission: "menu.system.enterprise", title: "企业信息" },
         },
         {
           path: "system/course",
           name: "system-course",
           component: () => import("@/views/placeholder/ModulePlaceholder.vue"),
-          meta: { roles: ["admin"], title: "课程信息" },
+          meta: { permission: "menu.system.course", title: "课程信息" },
         },
         {
           path: "system/document-design",
           name: "system-document-design",
           component: () => import("@/views/placeholder/ModulePlaceholder.vue"),
-          meta: { roles: ["admin"], title: "单据设计" },
+          meta: { permission: "menu.system.document", title: "单据设计" },
         },
         {
           path: "system/print-settings",
           name: "system-print-settings",
           component: () => import("@/views/placeholder/ModulePlaceholder.vue"),
-          meta: { roles: ["admin"], title: "打印设置" },
+          meta: { permission: "menu.system.print", title: "打印设置" },
         },
         {
           path: "system/online-users",
           name: "system-online-users",
           component: () => import("@/views/placeholder/ModulePlaceholder.vue"),
-          meta: { roles: ["admin"], title: "在线用户" },
+          meta: { permission: "menu.system.online", title: "在线用户" },
         },
         {
           path: "system/logs",
           name: "system-logs",
           component: () => import("@/views/placeholder/ModulePlaceholder.vue"),
-          meta: { roles: ["admin"], title: "日志管理" },
+          meta: { permission: "menu.system.logs", title: "日志管理" },
         },
         {
           path: "bi",
           name: "bi-center",
           component: () => import("@/views/placeholder/ModulePlaceholder.vue"),
-          meta: { roles: ["admin"], title: "数智BI中心" },
+          meta: { permission: "menu.bi", title: "数智BI中心" },
         },
       ],
     },
@@ -138,9 +139,12 @@ router.beforeEach(async (to) => {
       return { name: "login" };
     }
   }
-  const roles = to.meta.roles as string[] | undefined;
-  if (roles && roles.length && auth.roleCode && !roles.includes(auth.roleCode)) {
-    return { name: "home" };
+  const perm = to.meta.permission as string | string[] | undefined;
+  if (perm) {
+    const codes = Array.isArray(perm) ? perm : [perm];
+    if (!codes.some((c) => auth.can(c))) {
+      return { name: "home" };
+    }
   }
   return true;
 });

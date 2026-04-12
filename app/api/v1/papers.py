@@ -8,13 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.deps import get_db, require_roles
+from app.api.deps import get_db, require_any_permission, require_permission
 from app.models.exam import ExamPaper, ExamPaperItem
 from app.models.question import Question
 from app.models.user import User
 from app.schemas.common import PageParams, PageResult
 from app.schemas.paper import PaperCreate, PaperItemAdd, PaperItemOut, PaperOut, PaperSummary, PaperUpdate
 from app.schemas.question import QuestionOut
+from app.services.data_scope import assert_paper_in_enterprise, assert_question_in_enterprise
 
 router = APIRouter()
 
@@ -32,13 +33,26 @@ def _recalc_total_score(db: Session, paper_id: int) -> None:
 @router.get("", response_model=PageResult[PaperSummary])
 def list_papers(
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[User, Depends(require_permission("list.paper"))],
     page: Annotated[PageParams, Depends()],
 ) -> PageResult[PaperSummary]:
-    """试卷列表（不含小题明细，减少负载）。"""
-    total = db.scalar(select(func.count()).select_from(ExamPaper)) or 0
+    """本企业试卷列表。"""
+    total = (
+        db.scalar(
+            select(func.count())
+            .select_from(ExamPaper)
+            .join(User, ExamPaper.created_by == User.id)
+            .where(User.enterprise_id == current.enterprise_id)
+        )
+        or 0
+    )
     rows = db.scalars(
-        select(ExamPaper).offset(page.skip).limit(page.limit).order_by(ExamPaper.id.desc())
+        select(ExamPaper)
+        .join(User, ExamPaper.created_by == User.id)
+        .where(User.enterprise_id == current.enterprise_id)
+        .offset(page.skip)
+        .limit(page.limit)
+        .order_by(ExamPaper.id.desc())
     ).all()
     return PageResult[PaperSummary](total=int(total), items=[PaperSummary.model_validate(r) for r in rows])
 
@@ -47,7 +61,7 @@ def list_papers(
 def create_paper(
     body: PaperCreate,
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[User, Depends(require_permission("action.paper.manage"))],
 ) -> PaperOut:
     """新建试卷。"""
     p = ExamPaper(
@@ -63,20 +77,7 @@ def create_paper(
     return PaperOut.model_validate(p)
 
 
-@router.get("/{paper_id}", response_model=PaperOut)
-def get_paper(
-    paper_id: int,
-    db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin", "teacher"))],
-) -> PaperOut:
-    """试卷详情（含题目项与题干）。"""
-    p = db.scalars(
-        select(ExamPaper)
-        .options(joinedload(ExamPaper.items).joinedload(ExamPaperItem.question))
-        .where(ExamPaper.id == paper_id)
-    ).first()
-    if p is None:
-        raise HTTPException(status_code=404, detail="试卷不存在")
+def _build_paper_out(p: ExamPaper) -> PaperOut:
     items_out: list[PaperItemOut] = []
     for it in sorted(p.items, key=lambda x: (x.sort_order, x.id)):
         q = it.question
@@ -102,16 +103,35 @@ def get_paper(
     )
 
 
+@router.get("/{paper_id}", response_model=PaperOut)
+def get_paper(
+    paper_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[
+        User,
+        Depends(require_any_permission("list.paper", "action.paper.manage")),
+    ],
+) -> PaperOut:
+    """试卷详情（含题目项与题干）。"""
+    assert_paper_in_enterprise(db, current, paper_id)
+    p = db.scalars(
+        select(ExamPaper)
+        .options(joinedload(ExamPaper.items).joinedload(ExamPaperItem.question))
+        .where(ExamPaper.id == paper_id)
+    ).first()
+    if p is None:
+        raise HTTPException(status_code=404, detail="试卷不存在")
+    return _build_paper_out(p)
+
+
 @router.patch("/{paper_id}", response_model=PaperOut)
 def update_paper(
     paper_id: int,
     body: PaperUpdate,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[User, Depends(require_permission("action.paper.manage"))],
 ) -> PaperOut:
-    p = db.get(ExamPaper, paper_id)
-    if p is None:
-        raise HTTPException(status_code=404, detail="试卷不存在")
+    p = assert_paper_in_enterprise(db, current, paper_id)
     data = body.model_dump(exclude_unset=True)
     for k, v in data.items():
         setattr(p, k, v)
@@ -124,11 +144,9 @@ def update_paper(
 def delete_paper(
     paper_id: int,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[User, Depends(require_permission("action.paper.manage"))],
 ) -> None:
-    p = db.get(ExamPaper, paper_id)
-    if p is None:
-        raise HTTPException(status_code=404, detail="试卷不存在")
+    p = assert_paper_in_enterprise(db, current, paper_id)
     db.delete(p)
     db.commit()
 
@@ -138,14 +156,11 @@ def add_paper_item(
     paper_id: int,
     body: PaperItemAdd,
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[User, Depends(require_permission("action.paper.manage"))],
 ) -> PaperOut:
     """向试卷添加一题。"""
-    p = db.get(ExamPaper, paper_id)
-    if p is None:
-        raise HTTPException(status_code=404, detail="试卷不存在")
-    if db.get(Question, body.question_id) is None:
-        raise HTTPException(status_code=400, detail="题目不存在")
+    assert_paper_in_enterprise(db, current, paper_id)
+    assert_question_in_enterprise(db, current, body.question_id)
     dup = db.scalar(
         select(func.count())
         .select_from(ExamPaperItem)
@@ -174,9 +189,10 @@ def remove_paper_item(
     paper_id: int,
     item_id: int,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[User, Depends(require_permission("action.paper.manage"))],
 ) -> None:
     """从试卷移除题目项。"""
+    assert_paper_in_enterprise(db, current, paper_id)
     it = db.get(ExamPaperItem, item_id)
     if it is None or it.paper_id != paper_id:
         raise HTTPException(status_code=404, detail="试卷题目项不存在")

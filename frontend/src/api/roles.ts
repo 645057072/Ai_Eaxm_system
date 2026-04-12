@@ -15,3 +15,11 @@ export function patchRole(id: number, body: Record<string, unknown>) {
 export function deleteRole(id: number) {
   return http.delete(`/v1/roles/${id}`);
 }
+
+export function fetchRolePermissions(roleId: number) {
+  return http.get<string[]>(`/v1/roles/${roleId}/permissions`);
+}
+
+export function saveRolePermissions(roleId: number, codes: string[]) {
+  return http.put<string[]>(`/v1/roles/${roleId}/permissions`, { codes });
+}

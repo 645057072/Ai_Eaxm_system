@@ -8,13 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.deps import get_db, require_roles
+from app.api.deps import get_db, require_any_permission, require_permission
 from app.models.exam import ExamAttempt, ExamPaper, ExamPaperItem, ExamSession
 from app.models.user import User
+from app.schemas.attempt import AttemptStartOut
 from app.schemas.common import PageParams, PageResult
 from app.schemas.exam_take import TakeDataOut, TakeQuestionItem
 from app.schemas.session import ExamSessionCreate, ExamSessionOut, ExamSessionUpdate
-from app.schemas.attempt import AttemptStartOut
+from app.services.data_scope import assert_paper_in_enterprise, assert_session_in_enterprise
 
 router = APIRouter()
 
@@ -26,10 +27,10 @@ def _now() -> datetime:
 @router.get("/available/list", response_model=PageResult[ExamSessionOut])
 def list_available_for_student(
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("student"))],
+    current: Annotated[User, Depends(require_permission("menu.exam.available"))],
     page: Annotated[PageParams, Depends()],
 ) -> PageResult[ExamSessionOut]:
-    """考生可见：已发布且当前时间在开始与结束之间的场次（须放在 /{session_id} 之前）。"""
+    """考生可见的本企业场次。"""
     now = _now()
     conds = [
         ExamSession.status == "published",
@@ -37,10 +38,20 @@ def list_available_for_student(
         ExamSession.end_at.is_not(None),
         ExamSession.start_at <= now,
         ExamSession.end_at >= now,
+        User.enterprise_id == current.enterprise_id,
     ]
-    total = db.scalar(select(func.count()).select_from(ExamSession).where(*conds)) or 0
+    total = (
+        db.scalar(
+            select(func.count())
+            .select_from(ExamSession)
+            .join(User, ExamSession.created_by == User.id)
+            .where(*conds)
+        )
+        or 0
+    )
     rows = db.scalars(
         select(ExamSession)
+        .join(User, ExamSession.created_by == User.id)
         .where(*conds)
         .order_by(ExamSession.id.desc())
         .offset(page.skip)
@@ -52,16 +63,25 @@ def list_available_for_student(
 @router.get("", response_model=PageResult[ExamSessionOut])
 def list_sessions(
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[User, Depends(require_permission("list.session"))],
     page: Annotated[PageParams, Depends()],
     status: str | None = None,
 ) -> PageResult[ExamSessionOut]:
-    """场次列表（教师/管理员）。"""
-    stmt = select(func.count()).select_from(ExamSession)
+    """本企业场次列表。"""
+    stmt = (
+        select(func.count())
+        .select_from(ExamSession)
+        .join(User, ExamSession.created_by == User.id)
+        .where(User.enterprise_id == current.enterprise_id)
+    )
     if status:
         stmt = stmt.where(ExamSession.status == status)
     total = db.scalar(stmt) or 0
-    q = select(ExamSession)
+    q = (
+        select(ExamSession)
+        .join(User, ExamSession.created_by == User.id)
+        .where(User.enterprise_id == current.enterprise_id)
+    )
     if status:
         q = q.where(ExamSession.status == status)
     rows = db.scalars(q.offset(page.skip).limit(page.limit).order_by(ExamSession.id.desc())).all()
@@ -72,11 +92,10 @@ def list_sessions(
 def create_session(
     body: ExamSessionCreate,
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[User, Depends(require_permission("action.session.manage"))],
 ) -> ExamSessionOut:
     """创建场次。"""
-    if db.get(ExamPaper, body.paper_id) is None:
-        raise HTTPException(status_code=400, detail="试卷不存在")
+    assert_paper_in_enterprise(db, current, body.paper_id)
     s = ExamSession(
         paper_id=body.paper_id,
         title=body.title,
@@ -95,12 +114,23 @@ def create_session(
 def get_session(
     session_id: int,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin", "teacher", "student"))],
+    current: Annotated[
+        User,
+        Depends(
+            require_any_permission(
+                "list.session",
+                "action.session.manage",
+                "menu.exam.available",
+                "action.exam.take",
+            )
+        ),
+    ],
 ) -> ExamSessionOut:
     """场次详情。"""
     s = db.get(ExamSession, session_id)
     if s is None:
         raise HTTPException(status_code=404, detail="场次不存在")
+    assert_session_in_enterprise(db, current, session_id)
     return ExamSessionOut.model_validate(s)
 
 
@@ -109,11 +139,9 @@ def update_session(
     session_id: int,
     body: ExamSessionUpdate,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[User, Depends(require_permission("action.session.manage"))],
 ) -> ExamSessionOut:
-    s = db.get(ExamSession, session_id)
-    if s is None:
-        raise HTTPException(status_code=404, detail="场次不存在")
+    s = assert_session_in_enterprise(db, current, session_id)
     data = body.model_dump(exclude_unset=True)
     for k, v in data.items():
         setattr(s, k, v)
@@ -126,12 +154,10 @@ def update_session(
 def publish_session(
     session_id: int,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("admin", "teacher"))],
+    current: Annotated[User, Depends(require_permission("action.session.manage"))],
 ) -> ExamSessionOut:
     """发布场次。"""
-    s = db.get(ExamSession, session_id)
-    if s is None:
-        raise HTTPException(status_code=404, detail="场次不存在")
+    s = assert_session_in_enterprise(db, current, session_id)
     s.status = "published"
     db.commit()
     db.refresh(s)
@@ -142,9 +168,10 @@ def publish_session(
 def get_take_data(
     session_id: int,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_roles("student"))],
+    current: Annotated[User, Depends(require_permission("action.exam.take"))],
 ) -> TakeDataOut:
     """获取本场考试题目（不含标准答案）。"""
+    assert_session_in_enterprise(db, current, session_id)
     s = db.scalars(
         select(ExamSession)
         .options(joinedload(ExamSession.paper).joinedload(ExamPaper.items).joinedload(ExamPaperItem.question))
@@ -187,9 +214,10 @@ def get_take_data(
 def start_attempt(
     session_id: int,
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_roles("student"))],
+    current: Annotated[User, Depends(require_permission("action.exam.take"))],
 ) -> AttemptStartOut:
     """开始考试，生成唯一作答记录。"""
+    assert_session_in_enterprise(db, current, session_id)
     s = db.scalars(
         select(ExamSession).options(joinedload(ExamSession.paper)).where(ExamSession.id == session_id)
     ).first()

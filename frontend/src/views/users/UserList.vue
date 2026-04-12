@@ -2,14 +2,21 @@
   <el-card>
     <div class="toolbar">
       <el-input v-model="keyword" placeholder="用户名关键词" clearable style="width: 220px" />
-      <el-button type="primary" @click="load"><AppEmoji name="search" size="sm" decorative />查询</el-button>
-      <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建用户</el-button>
+      <el-button v-if="auth.can('list.user')" type="primary" @click="load"
+        ><AppEmoji name="search" size="sm" decorative />查询</el-button
+      >
+      <el-button v-if="auth.can('action.user.create')" type="success" @click="openCreate"
+        ><AppEmoji name="add" size="sm" decorative />新建用户</el-button
+      >
     </div>
     <el-table :data="rows" style="width: 100%">
-      <el-table-column prop="id" label="ID" width="80" />
-      <el-table-column prop="username" label="用户名" />
-      <el-table-column prop="full_name" label="姓名" />
-      <el-table-column label="角色">
+      <el-table-column v-if="auth.can('list.user')" prop="id" label="ID" width="80" />
+      <el-table-column v-if="auth.can('field.user.username')" prop="username" label="用户名" />
+      <el-table-column v-if="auth.can('field.user.full_name')" prop="full_name" label="姓名" />
+      <el-table-column v-if="auth.can('field.user.enterprise')" label="所属企业" min-width="120" show-overflow-tooltip>
+        <template #default="{ row }">{{ (row.enterprise as { name?: string })?.name }}</template>
+      </el-table-column>
+      <el-table-column v-if="auth.can('field.user.role')" label="角色">
         <template #default="{ row }">
           <span class="cell-with-ico">
             <AppEmoji :name="roleKey(row)" size="sm" decorative />
@@ -17,7 +24,7 @@
           </span>
         </template>
       </el-table-column>
-      <el-table-column prop="is_active" label="启用" width="100">
+      <el-table-column v-if="auth.can('field.user.is_active')" prop="is_active" label="启用" width="100">
         <template #default="{ row }">
           <span class="cell-with-ico">
             <AppEmoji :name="row.is_active ? 'enabledYes' : 'enabledNo'" size="sm" decorative />
@@ -25,10 +32,18 @@
           </span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="220">
+      <el-table-column
+        v-if="auth.canAny('action.user.update', 'action.user.delete')"
+        label="操作"
+        width="220"
+      >
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)"><AppEmoji name="edit" size="sm" decorative />编辑</el-button>
-          <el-button link type="danger" @click="onDelete(row)"><AppEmoji name="delete" size="sm" decorative />删除</el-button>
+          <el-button v-if="auth.can('action.user.update')" link type="primary" @click="openEdit(row)"
+            ><AppEmoji name="edit" size="sm" decorative />编辑</el-button
+          >
+          <el-button v-if="auth.can('action.user.delete')" link type="danger" @click="onDelete(row)"
+            ><AppEmoji name="delete" size="sm" decorative />删除</el-button
+          >
         </template>
       </el-table-column>
     </el-table>
@@ -44,17 +59,22 @@
 
     <el-dialog v-model="dlg" :title="editId ? '编辑用户' : '新建用户'" width="480px">
       <el-form label-width="88px">
-        <el-form-item v-if="!editId" label="用户名"><el-input v-model="form.username" /></el-form-item>
-        <el-form-item label="密码"
+        <el-form-item v-if="!editId && auth.can('field.user.username')" label="用户名"
+          ><el-input v-model="form.username"
+        /></el-form-item>
+        <el-form-item v-if="auth.can('field.user.password')" label="密码"
           ><el-input v-model="form.password" type="password" :placeholder="editId ? '不改请留空' : '必填'"
         /></el-form-item>
-        <el-form-item label="姓名"><el-input v-model="form.full_name" /></el-form-item>
-        <el-form-item label="角色">
+        <el-form-item v-if="auth.can('field.user.full_name')" label="姓名"><el-input v-model="form.full_name" /></el-form-item>
+        <el-form-item v-if="auth.can('field.user.enterprise')" label="所属企业">
+          <el-input :model-value="auth.me?.enterprise?.name || ''" disabled />
+        </el-form-item>
+        <el-form-item v-if="auth.can('field.user.role')" label="角色">
           <el-select v-model="form.role_id" style="width: 100%">
             <el-option v-for="r in roleOpts" :key="r.id" :label="r.name" :value="r.id" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="editId" label="启用">
+        <el-form-item v-if="editId && auth.can('field.user.is_active')" label="启用">
           <el-switch v-model="form.is_active" />
         </el-form-item>
       </el-form>
@@ -71,7 +91,10 @@ import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { listUsers, createUser, patchUser, deleteUser } from "@/api/users";
 import { listRoles } from "@/api/roles";
+import { useAuthStore } from "@/stores/auth";
 import { systemEmojiRoleKey, type SystemEmojiKey } from "@/assets/emoji/systemEmoji";
+
+const auth = useAuthStore();
 
 function roleKey(row: Record<string, unknown>): SystemEmojiKey {
   const code = (row.role as { code?: string } | undefined)?.code;

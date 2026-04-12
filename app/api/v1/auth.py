@@ -2,12 +2,13 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, get_db
+from app.core.permissions import get_effective_codes, is_super_role
 from app.core.security import create_access_token, verify_password
 from app.models.user import User
-from app.schemas.auth import LoginRequest, TokenResponse, UserMe
+from app.schemas.auth import EnterpriseBrief, LoginRequest, RoleBrief, TokenResponse, UserMe
 
 router = APIRouter()
 
@@ -25,6 +26,23 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
 
 
 @router.get("/me", response_model=UserMe)
-def me(current: User = Depends(get_current_user)) -> UserMe:
-    """当前登录用户信息。"""
-    return UserMe.model_validate(current)
+def me(
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+) -> UserMe:
+    """当前登录用户信息（含所属企业与功能点）。"""
+    u = db.scalars(
+        select(User).options(joinedload(User.enterprise), joinedload(User.role)).where(User.id == current.id)
+    ).first()
+    if u is None or u.enterprise is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="用户未关联企业")
+    perms = ["*"] if is_super_role(u) else sorted(get_effective_codes(db, u))
+    return UserMe(
+        id=u.id,
+        username=u.username,
+        full_name=u.full_name,
+        enterprise_id=u.enterprise_id,
+        enterprise=EnterpriseBrief(id=u.enterprise.id, name=u.enterprise.name),
+        role=RoleBrief.model_validate(u.role),
+        permissions=perms,
+    )

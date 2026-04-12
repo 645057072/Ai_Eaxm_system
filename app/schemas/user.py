@@ -5,7 +5,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from app.schemas.auth import RoleBrief
+from app.schemas.auth import EnterpriseBrief, RoleBrief
 
 
 class UserCreate(BaseModel):
@@ -13,6 +13,8 @@ class UserCreate(BaseModel):
     password: str = Field(..., min_length=6, max_length=128)
     full_name: Optional[str] = Field(None, max_length=64)
     role_id: int = Field(..., ge=1)
+    # 可选；服务端以当前登录用户所属企业为准写入，防止跨企业建号
+    enterprise_id: Optional[int] = Field(None, ge=1)
 
 
 class UserUpdate(BaseModel):
@@ -27,6 +29,8 @@ class UserOut(BaseModel):
     username: str
     full_name: Optional[str] = None
     is_active: bool
+    enterprise_id: int
+    enterprise: EnterpriseBrief
     role: RoleBrief
     created_at: datetime
 
