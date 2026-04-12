@@ -25,6 +25,7 @@ services:
 
   api:
     build: .
+    restart: unless-stopped
     environment:
       DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://exam:exam@mysql:3306/exam_db?charset=utf8mb4}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
@@ -32,6 +33,18 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://127.0.0.1,http://47.93.44.247}
     expose:
       - "8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
     depends_on:
       mysql:
         condition: service_healthy
@@ -39,6 +52,7 @@ services:
         condition: service_started
 
   web:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: deploy/nginx-frontend.Dockerfile
@@ -47,7 +61,8 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   mysql_data:
