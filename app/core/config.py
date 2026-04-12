@@ -2,10 +2,19 @@
 """应用配置：从环境变量读取，便于 Docker / 阿里云部署。"""
 
 from functools import lru_cache
-from typing import List, Optional
+from typing import List
 
-from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def parse_cors_origins_env(value: str) -> List[str]:
+    """将 CORS 环境变量转为列表。必须用字符串字段接收，避免 Pydantic Settings 对 List 型环境变量走 JSON 解析（逗号 URL 不是合法 JSON，会触发 json.decoder 异常导致进程起不来）。"""
+    s = value.strip()
+    if not s:
+        return ["*"]
+    if s == "*":
+        return ["*"]
+    return [x.strip() for x in s.split(",") if x.strip()]
 
 
 class Settings(BaseSettings):
@@ -15,20 +24,8 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     debug: bool = False
 
-    # 跨域：逗号分隔，如 http://47.93.44.247,http://localhost:5173；环境变量 CORS_ORIGINS
-    cors_origins: List[str] = ["*"]
-
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def split_cors(cls, v: object) -> List[str]:
-        if v is None or v == "":
-            return ["*"]
-        if isinstance(v, list):
-            return [str(x).strip() for x in v if str(x).strip()]
-        s = str(v).strip()
-        if s == "*":
-            return ["*"]
-        return [x.strip() for x in s.split(",") if x.strip()]
+    # 跨域：逗号分隔 URL；环境变量 CORS_ORIGINS（勿用 List 字段，见 parse_cors_origins_env 说明）
+    cors_origins: str = "*"
 
     # MySQL（阿里云 RDS）；环境变量 DATABASE_URL
     database_url: str = "mysql+pymysql://exam:exam@127.0.0.1:3306/exam_db?charset=utf8mb4"
@@ -45,3 +42,7 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def get_cors_origins_list() -> List[str]:
+    return parse_cors_origins_env(get_settings().cors_origins)
