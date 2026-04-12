@@ -9,9 +9,17 @@
         <el-menu-item index="/">
           <span class="menu-item-inner"><AppEmoji name="home" size="sm" decorative />首页</span>
         </el-menu-item>
-        <el-menu-item v-if="auth.can('menu.exam.questions')" index="/questions">
-          <span class="menu-item-inner"><AppEmoji name="questionBank" size="sm" decorative />题库</span>
-        </el-menu-item>
+        <el-sub-menu
+          v-if="auth.canAny('menu.exam.qb_center', 'menu.exam.question_manage')"
+          index="exam-qb-center"
+        >
+          <template #title>
+            <span class="menu-item-inner"><AppEmoji name="questionBank" size="sm" decorative />题库中心</span>
+          </template>
+          <el-menu-item v-if="auth.can('menu.exam.question_manage')" index="/questions">
+            <span class="menu-item-inner">题库管理</span>
+          </el-menu-item>
+        </el-sub-menu>
         <el-menu-item v-if="auth.can('menu.exam.papers')" index="/papers">
           <span class="menu-item-inner"><AppEmoji name="papers" size="sm" decorative />试卷</span>
         </el-menu-item>

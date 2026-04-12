@@ -20,14 +20,19 @@ from app.models.user import Role, User
 # 教师：考试业务全权限
 TEACHER_PERMISSIONS = [
     "menu.home",
-    "menu.exam.questions",
+    "menu.exam.qb_center",
+    "menu.exam.question_manage",
     "menu.exam.papers",
     "menu.exam.sessions",
     "list.question",
     "list.paper",
     "list.session",
     "list.attempt",
+    "list.course",
+    "list.enterprise",
     "action.question.manage",
+    "action.question.import",
+    "action.question.batch",
     "action.paper.manage",
     "action.session.manage",
 ]

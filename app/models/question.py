@@ -10,8 +10,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
-    from app.models.user import User
+    from app.models.course import Course
+    from app.models.enterprise import Enterprise
     from app.models.exam import ExamPaperItem
+    from app.models.user import User
 
 
 class Question(Base):
@@ -28,6 +30,10 @@ class Question(Base):
     analysis: Mapped[Optional[str]] = mapped_column(Text, comment="解析")
     difficulty: Mapped[int] = mapped_column(Integer, default=1, comment="难度 1-5")
     status: Mapped[str] = mapped_column(String(16), default="draft", index=True, comment="draft/published")
+    course_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sys_course.id"), nullable=True, index=True, comment="所属课程")
+    enterprise_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("sys_enterprise.id"), nullable=True, index=True, comment="所属企业"
+    )
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("sys_user.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -37,4 +43,6 @@ class Question(Base):
     creator: Mapped[Optional["User"]] = relationship(
         back_populates="questions_created", foreign_keys=[created_by]
     )
+    course: Mapped[Optional["Course"]] = relationship("Course", back_populates="questions")
+    enterprise: Mapped[Optional["Enterprise"]] = relationship("Enterprise", back_populates="questions")
     paper_items: Mapped[List["ExamPaperItem"]] = relationship(back_populates="question")

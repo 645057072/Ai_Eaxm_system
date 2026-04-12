@@ -4,9 +4,12 @@
       <AppEmoji name="welcome" size="md" decorative />
       欢迎使用在线考试系统。
     </p>
-    <p v-if="auth.canAny('menu.exam.questions', 'menu.exam.papers', 'menu.exam.sessions')" class="hint">
+    <p
+      v-if="auth.canAny('menu.exam.qb_center', 'menu.exam.question_manage', 'menu.exam.papers', 'menu.exam.sessions')"
+      class="hint"
+    >
       <AppEmoji name="questionBank" size="sm" decorative />
-      请从左侧进入「题库 / 试卷 / 考试场次」进行管理。
+      请从左侧进入「题库中心 / 试卷 / 考试场次」进行管理。
     </p>
     <p v-if="auth.can('menu.exam.available')" class="hint">
       <AppEmoji name="availableExams" size="sm" decorative />

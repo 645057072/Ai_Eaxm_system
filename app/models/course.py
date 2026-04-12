@@ -2,7 +2,7 @@
 """课程信息。"""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -11,6 +11,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.enterprise import Enterprise
+    from app.models.question import Question
     from app.models.user import User
 
 
@@ -29,5 +30,6 @@ class Course(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     enterprise: Mapped["Enterprise"] = relationship("Enterprise", back_populates="courses")
+    questions: Mapped[List["Question"]] = relationship("Question", back_populates="course")
     creator: Mapped[Optional["User"]] = relationship("User", back_populates="courses_created")
 

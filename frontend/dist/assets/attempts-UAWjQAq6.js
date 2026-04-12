@@ -1,1 +1,0 @@
-import{B as s}from"./index-Azs7tJ8U.js";function r(t){return s.get(`/v1/attempts/${t}`)}function a(t,e){return s.put(`/v1/attempts/${t}/answers`,{answers:e})}function p(t){return s.post(`/v1/attempts/${t}/submit`)}export{p as a,r as g,a as s};

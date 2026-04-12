@@ -40,7 +40,7 @@ const router = createRouter({
           path: "questions",
           name: "questions",
           component: () => import("@/views/questions/QuestionList.vue"),
-          meta: { permission: "menu.exam.questions" },
+          meta: { permission: "menu.exam.question_manage" },
         },
         {
           path: "papers",

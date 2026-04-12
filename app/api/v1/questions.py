@@ -2,18 +2,52 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_db, require_any_permission, require_permission
+from app.core.permissions import is_super_role
+from app.models.course import Course
+from app.models.enterprise import Enterprise
 from app.models.question import Question
 from app.models.user import User
 from app.schemas.common import PageParams, PageResult
-from app.schemas.question import QuestionCreate, QuestionOut, QuestionUpdate
+from app.schemas.question import (
+    QuestionBatchPublishIn,
+    QuestionCreate,
+    QuestionImportResult,
+    QuestionOut,
+    QuestionUpdate,
+)
 from app.services.data_scope import assert_question_in_enterprise, restrict_query_by_creator_enterprise
+from app.services.question_import import (
+    build_image_placeholder,
+    build_questions_from_text,
+    extract_plain_text,
+)
 
 router = APIRouter()
+
+
+def _to_out(obj: Question) -> QuestionOut:
+    return QuestionOut(
+        id=obj.id,
+        q_type=obj.q_type,
+        stem=obj.stem,
+        options_json=obj.options_json,
+        answer_json=obj.answer_json,
+        analysis=obj.analysis,
+        difficulty=obj.difficulty,
+        status=obj.status,
+        course_id=obj.course_id,
+        enterprise_id=obj.enterprise_id,
+        course_name=obj.course.name if obj.course else None,
+        enterprise_name=obj.enterprise.name if obj.enterprise else None,
+        created_by=obj.created_by,
+        created_at=obj.created_at,
+        updated_at=obj.updated_at,
+    )
 
 
 @router.get("", response_model=PageResult[QuestionOut])
@@ -23,14 +57,17 @@ def list_questions(
     page: Annotated[PageParams, Depends()],
     q_type: str | None = None,
     status: str | None = None,
+    course_id: int | None = None,
 ) -> PageResult[QuestionOut]:
-    """本企业用户创建的题目列表。"""
+    """题目列表。"""
     stmt = select(func.count()).select_from(Question).join(User, Question.created_by == User.id)
     stmt = restrict_query_by_creator_enterprise(stmt, current)
     if q_type:
         stmt = stmt.where(Question.q_type == q_type)
     if status:
         stmt = stmt.where(Question.status == status)
+    if course_id is not None:
+        stmt = stmt.where(Question.course_id == course_id)
     total = db.scalar(stmt) or 0
     q = select(Question).join(User, Question.created_by == User.id)
     q = restrict_query_by_creator_enterprise(q, current)
@@ -38,8 +75,93 @@ def list_questions(
         q = q.where(Question.q_type == q_type)
     if status:
         q = q.where(Question.status == status)
+    if course_id is not None:
+        q = q.where(Question.course_id == course_id)
+    q = q.options(joinedload(Question.course), joinedload(Question.enterprise))
     rows = db.scalars(q.offset(page.skip).limit(page.limit).order_by(Question.id.desc())).all()
-    return PageResult[QuestionOut](total=int(total), items=[QuestionOut.model_validate(r) for r in rows])
+    return PageResult[QuestionOut](total=int(total), items=[_to_out(r) for r in rows])
+
+
+@router.post("/batch-publish", response_model=dict)
+def batch_publish_questions(
+    body: QuestionBatchPublishIn,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[User, Depends(require_permission("action.question.batch"))],
+) -> dict:
+    """批量发布：将草稿改为已发布。"""
+    n_ok = 0
+    for qid in body.ids:
+        obj = db.get(Question, qid)
+        if obj is None:
+            continue
+        try:
+            assert_question_in_enterprise(db, current, qid)
+        except HTTPException:
+            continue
+        if obj.status != "published":
+            obj.status = "published"
+            n_ok += 1
+    db.commit()
+    return {"updated": n_ok}
+
+
+@router.post("/import", response_model=QuestionImportResult)
+async def import_questions(
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[User, Depends(require_permission("action.question.import"))],
+    course_id: Annotated[int, Form()],
+    enterprise_id: Annotated[int, Form()],
+    file: UploadFile = File(...),
+) -> QuestionImportResult:
+    """导入题库：解析文件并写入草稿题目。"""
+    course = db.get(Course, course_id)
+    if course is None:
+        raise HTTPException(status_code=404, detail="课程不存在")
+    ent = db.get(Enterprise, enterprise_id)
+    if ent is None:
+        raise HTTPException(status_code=404, detail="企业不存在")
+    if course.enterprise_id != enterprise_id:
+        raise HTTPException(status_code=400, detail="课程与所属企业不一致")
+    if not is_super_role(current):
+        if current.enterprise_id is None or current.enterprise_id != enterprise_id:
+            raise HTTPException(status_code=403, detail="无权导入到该企业")
+    raw = await file.read()
+    if len(raw) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="文件超过 20MB")
+    fn = file.filename or "upload"
+    ext = (fn.rsplit(".", 1)[-1] if "." in fn else "").lower()
+    image_ext = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
+    if ext in image_ext:
+        items = [build_image_placeholder(fn)]
+    else:
+        try:
+            text = extract_plain_text(fn, raw)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        if not text.strip():
+            items = [build_image_placeholder(fn)]
+        else:
+            items = build_questions_from_text(text)
+    if not items:
+        raise HTTPException(status_code=400, detail="未能从文件中解析出题目")
+    created = 0
+    for it in items:
+        obj = Question(
+            q_type=it["q_type"],
+            stem=it["stem"],
+            options_json=it.get("options_json"),
+            answer_json=it["answer_json"],
+            analysis=it.get("analysis"),
+            difficulty=1,
+            status="draft",
+            course_id=course_id,
+            enterprise_id=enterprise_id,
+            created_by=current.id,
+        )
+        db.add(obj)
+        created += 1
+    db.commit()
+    return QuestionImportResult(created=created, message=f"已导入 {created} 道题目草稿")
 
 
 @router.post("", response_model=QuestionOut)
@@ -57,12 +179,19 @@ def create_question(
         analysis=body.analysis,
         difficulty=body.difficulty,
         status=body.status,
+        course_id=body.course_id,
+        enterprise_id=body.enterprise_id,
         created_by=current.id,
     )
     db.add(obj)
     db.commit()
     db.refresh(obj)
-    return QuestionOut.model_validate(obj)
+    obj = db.scalars(
+        select(Question)
+        .options(joinedload(Question.course), joinedload(Question.enterprise))
+        .where(Question.id == obj.id)
+    ).first()
+    return _to_out(obj)
 
 
 @router.get("/{question_id}", response_model=QuestionOut)
@@ -75,7 +204,13 @@ def get_question(
     ],
 ) -> QuestionOut:
     obj = assert_question_in_enterprise(db, current, question_id)
-    return QuestionOut.model_validate(obj)
+    obj = db.scalars(
+        select(Question)
+        .options(joinedload(Question.course), joinedload(Question.enterprise))
+        .where(Question.id == question_id)
+    ).first()
+    assert obj is not None
+    return _to_out(obj)
 
 
 @router.patch("/{question_id}", response_model=QuestionOut)
@@ -91,7 +226,13 @@ def update_question(
         setattr(obj, k, v)
     db.commit()
     db.refresh(obj)
-    return QuestionOut.model_validate(obj)
+    obj = db.scalars(
+        select(Question)
+        .options(joinedload(Question.course), joinedload(Question.enterprise))
+        .where(Question.id == question_id)
+    ).first()
+    assert obj is not None
+    return _to_out(obj)
 
 
 @router.delete("/{question_id}", status_code=204)

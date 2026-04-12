@@ -18,7 +18,8 @@ class CatalogItem(TypedDict):
 # kind: menu | list | form | field | action
 CATALOG: List[CatalogItem] = [
     {"code": "menu.home", "name": "首页", "label": "导航与入口", "kind": "menu"},
-    {"code": "menu.exam.questions", "name": "题库", "label": "考试业务", "kind": "menu"},
+    {"code": "menu.exam.qb_center", "name": "题库中心", "label": "考试业务", "kind": "menu"},
+    {"code": "menu.exam.question_manage", "name": "题库管理", "label": "考试业务", "kind": "menu"},
     {"code": "menu.exam.papers", "name": "试卷", "label": "考试业务", "kind": "menu"},
     {"code": "menu.exam.sessions", "name": "考试场次", "label": "考试业务", "kind": "menu"},
     {"code": "menu.exam.available", "name": "可参加的考试", "label": "考试业务", "kind": "menu"},
@@ -70,6 +71,8 @@ CATALOG: List[CatalogItem] = [
     {"code": "action.course.update", "name": "编辑课程", "label": "操作", "kind": "action"},
     {"code": "action.course.delete", "name": "删除课程", "label": "操作", "kind": "action"},
     {"code": "action.question.manage", "name": "题目维护", "label": "操作", "kind": "action"},
+    {"code": "action.question.import", "name": "导入题库", "label": "操作", "kind": "action"},
+    {"code": "action.question.batch", "name": "题目批量操作", "label": "操作", "kind": "action"},
     {"code": "action.paper.manage", "name": "试卷维护", "label": "操作", "kind": "action"},
     {"code": "action.session.manage", "name": "场次维护", "label": "操作", "kind": "action"},
     {"code": "action.exam.take", "name": "在线考试作答", "label": "操作", "kind": "action"},
