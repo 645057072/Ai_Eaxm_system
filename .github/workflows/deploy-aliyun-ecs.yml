@@ -1,8 +1,15 @@
 # 推送 main 分支后，SSH 登录阿里云 ECS 拉取最新代码并执行 docker compose 部署
-# 需在 GitHub 仓库 Settings -> Secrets and variables -> Actions 中配置：
-#   ALIYUN_SSH_USER    例如 root 或 ecs-user
-#   ALIYUN_SSH_PRIVATE_KEY  私钥全文（与 ECS 上 ~/.ssh/authorized_keys 对应，含 BEGIN/END 行）
-# 服务器上代码目录默认为 /opt/exam-system（与 deploy/aliyun/ecs-first-setup.sh 一致）
+#
+# 必填 Secrets（Settings -> Secrets and variables -> Actions -> New repository secret）：
+#   ALIYUN_SSH_USER          ECS 登录用户名，如 root
+#   ALIYUN_SSH_PRIVATE_KEY   OpenSSH 私钥全文（须含 -----BEGIN ... PRIVATE KEY----- 与 -----END...-----）
+#
+# 常见失败：ssh: no key found
+#   - 未创建上述 Secret，或名称拼写不一致（必须完全一致）
+#   - 私钥粘贴时少了头尾行，或用了 PuTTY .ppk（须用 OpenSSH 格式）
+#   - 私钥带密码：需在下方 appleboy 增加 passphrase: ${{ secrets.ALIYUN_SSH_KEY_PASSPHRASE }}
+#
+# 服务器代码目录：/opt/exam-system
 
 name: Deploy to Aliyun ECS
 
@@ -21,6 +28,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
+      - name: 校验 SSH Secrets 已配置
+        env:
+          SSH_USER: ${{ secrets.ALIYUN_SSH_USER }}
+          SSH_KEY: ${{ secrets.ALIYUN_SSH_PRIVATE_KEY }}
+        run: |
+          set -e
+          if [ -z "$SSH_USER" ]; then
+            echo "::error::缺少 Secret：ALIYUN_SSH_USER（ECS 登录名，如 root）"
+            exit 1
+          fi
+          if [ -z "$SSH_KEY" ]; then
+            echo "::error::缺少或无法读取 Secret：ALIYUN_SSH_PRIVATE_KEY。请在仓库 Settings -> Secrets -> Actions 中添加私钥全文，否则会报 ssh: no key found"
+            exit 1
+          fi
+          case "$SSH_KEY" in
+            *BEGIN*PRIVATE*KEY*) ;;
+            *)
+              echo "::error::ALIYUN_SSH_PRIVATE_KEY 格式异常：应包含 -----BEGIN ... PRIVATE KEY----- 行（OpenSSH PEM），勿使用 PuTTY .ppk"
+              exit 1
+              ;;
+          esac
+          echo "已检测到 ALIYUN_SSH_USER 与私钥，将连接 47.93.44.247"
+
       - name: SSH 部署到 47.93.44.247
         uses: appleboy/ssh-action@v1.2.0
         with:

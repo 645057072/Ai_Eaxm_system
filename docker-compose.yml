@@ -36,18 +36,13 @@ services:
     # 仅本机可访问，便于在 ECS 上 curl 调试：curl -s http://127.0.0.1:8000/health
     ports:
       - "127.0.0.1:8000:8000"
+    # 使用独立脚本 + 超时，避免 ECS 上冷启动/迁移较慢时误判 unhealthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 120s
+      test: ["CMD", "python", "/app/scripts/docker_healthcheck.py"]
+      interval: 15s
+      timeout: 12s
+      retries: 25
+      start_period: 300s
     depends_on:
       mysql:
         condition: service_healthy
@@ -63,9 +58,10 @@ services:
         VITE_API_BASE: /api
     ports:
       - "80:80"
+    # 仅等待 api 容器已启动，不要求 healthy，避免迁移慢时 web 永远无法启动（此前会报 dependency failed）
     depends_on:
       api:
-        condition: service_healthy
+        condition: service_started
 
 volumes:
   mysql_data:
