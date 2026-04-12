@@ -11,8 +11,8 @@ export type Me = {
   id: number;
   username: string;
   full_name: string | null;
-  enterprise_id: number;
-  enterprise: { id: number; name: string };
+  enterprise_id: number | null;
+  enterprise: { id: number; name: string } | null;
   role: { id: number; name: string; code: string };
   permissions: string[];
 };

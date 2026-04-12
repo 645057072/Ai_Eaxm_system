@@ -15,7 +15,11 @@ from app.models.user import User
 from app.schemas.common import PageParams, PageResult
 from app.schemas.paper import PaperCreate, PaperItemAdd, PaperItemOut, PaperOut, PaperSummary, PaperUpdate
 from app.schemas.question import QuestionOut
-from app.services.data_scope import assert_paper_in_enterprise, assert_question_in_enterprise
+from app.services.data_scope import (
+    assert_paper_in_enterprise,
+    assert_question_in_enterprise,
+    restrict_query_by_creator_enterprise,
+)
 
 router = APIRouter()
 
@@ -37,19 +41,14 @@ def list_papers(
     page: Annotated[PageParams, Depends()],
 ) -> PageResult[PaperSummary]:
     """本企业试卷列表。"""
-    total = (
-        db.scalar(
-            select(func.count())
-            .select_from(ExamPaper)
-            .join(User, ExamPaper.created_by == User.id)
-            .where(User.enterprise_id == current.enterprise_id)
-        )
-        or 0
-    )
+    cnt = select(func.count()).select_from(ExamPaper).join(User, ExamPaper.created_by == User.id)
+    cnt = restrict_query_by_creator_enterprise(cnt, current)
+    total = db.scalar(cnt) or 0
     rows = db.scalars(
-        select(ExamPaper)
-        .join(User, ExamPaper.created_by == User.id)
-        .where(User.enterprise_id == current.enterprise_id)
+        restrict_query_by_creator_enterprise(
+            select(ExamPaper).join(User, ExamPaper.created_by == User.id),
+            current,
+        )
         .offset(page.skip)
         .limit(page.limit)
         .order_by(ExamPaper.id.desc())

@@ -1,0 +1,68 @@
+/* 五套预置风格：科技、智慧向配色，通过 html[data-ui-theme] 切换 */
+
+html[data-ui-theme="nebula"] {
+  --shell-primary: #6366f1;
+  --shell-aside-bg: linear-gradient(180deg, #f5f3ff 0%, #ede9fe 100%);
+  --shell-header-bg: #ffffff;
+  --shell-main-bg: linear-gradient(180deg, #f4f4ff 0%, #eef2ff 100%);
+  --shell-brand-bg: linear-gradient(135deg, #ede9fe 0%, #ffffff 55%);
+  --shell-border: #e0e7ff;
+}
+
+html[data-ui-theme="aurora"] {
+  --shell-primary: #0d9488;
+  --shell-aside-bg: linear-gradient(180deg, #f0fdfa 0%, #ccfbf1 100%);
+  --shell-header-bg: #ffffff;
+  --shell-main-bg: linear-gradient(180deg, #ecfeff 0%, #e0f2fe 100%);
+  --shell-brand-bg: linear-gradient(135deg, #ccfbf1 0%, #ffffff 60%);
+  --shell-border: #99f6e4;
+}
+
+html[data-ui-theme="deepblue"] {
+  --shell-primary: #2563eb;
+  --shell-aside-bg: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+  --shell-header-bg: #ffffff;
+  --shell-main-bg: linear-gradient(180deg, #f0f6ff 0%, #e8eef8 100%);
+  --shell-brand-bg: linear-gradient(135deg, #dbeafe 0%, #ffffff 55%);
+  --shell-border: #bfdbfe;
+}
+
+html[data-ui-theme="amber"] {
+  --shell-primary: #d97706;
+  --shell-aside-bg: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+  --shell-header-bg: #ffffff;
+  --shell-main-bg: linear-gradient(180deg, #fffbeb 0%, #faf5ef 100%);
+  --shell-brand-bg: linear-gradient(135deg, #fef3c7 0%, #ffffff 58%);
+  --shell-border: #fde68a;
+}
+
+html[data-ui-theme="jade"] {
+  --shell-primary: #059669;
+  --shell-aside-bg: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
+  --shell-header-bg: #ffffff;
+  --shell-main-bg: linear-gradient(180deg, #f0fdf4 0%, #ecfdf5 100%);
+  --shell-brand-bg: linear-gradient(135deg, #d1fae5 0%, #ffffff 55%);
+  --shell-border: #a7f3d0;
+}
+
+html[data-ui-theme] {
+  --el-color-primary: var(--shell-primary);
+}
+
+.layout .aside {
+  background: var(--shell-aside-bg) !important;
+  border-right-color: var(--shell-border) !important;
+}
+
+.layout .brand {
+  background: var(--shell-brand-bg) !important;
+  border-bottom-color: var(--shell-border) !important;
+}
+
+.layout .header {
+  background: var(--shell-header-bg) !important;
+}
+
+.layout .main {
+  background: var(--shell-main-bg) !important;
+}

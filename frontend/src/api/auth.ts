@@ -10,3 +10,7 @@ export function login(username: string, password: string) {
 export function fetchMe() {
   return http.get("/v1/auth/me");
 }
+
+export function changeMyPassword(old_password: string, new_password: string) {
+  return http.patch("/v1/auth/me/password", { old_password, new_password });
+}

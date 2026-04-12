@@ -8,6 +8,10 @@ import App from "./App.vue";
 import router from "./router";
 import AppEmoji from "./components/AppEmoji.vue";
 import "./assets/styles/system-shell.css";
+import "./assets/styles/ui-themes.css";
+import { applyUiTheme, getStoredUiTheme } from "./utils/uiTheme";
+
+applyUiTheme(getStoredUiTheme());
 
 const app = createApp(App);
 app.component("AppEmoji", AppEmoji);

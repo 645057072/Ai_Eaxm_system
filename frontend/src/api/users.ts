@@ -1,6 +1,6 @@
 import { http } from "./http";
 
-export function listUsers(params: { skip?: number; limit?: number; keyword?: string }) {
+export function listUsers(params: { skip?: number; limit?: number; keyword?: string; enterprise_id?: number }) {
   return http.get("/v1/users", { params });
 }
 

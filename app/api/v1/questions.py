@@ -11,7 +11,7 @@ from app.models.question import Question
 from app.models.user import User
 from app.schemas.common import PageParams, PageResult
 from app.schemas.question import QuestionCreate, QuestionOut, QuestionUpdate
-from app.services.data_scope import assert_question_in_enterprise
+from app.services.data_scope import assert_question_in_enterprise, restrict_query_by_creator_enterprise
 
 router = APIRouter()
 
@@ -25,22 +25,15 @@ def list_questions(
     status: str | None = None,
 ) -> PageResult[QuestionOut]:
     """本企业用户创建的题目列表。"""
-    stmt = (
-        select(func.count())
-        .select_from(Question)
-        .join(User, Question.created_by == User.id)
-        .where(User.enterprise_id == current.enterprise_id)
-    )
+    stmt = select(func.count()).select_from(Question).join(User, Question.created_by == User.id)
+    stmt = restrict_query_by_creator_enterprise(stmt, current)
     if q_type:
         stmt = stmt.where(Question.q_type == q_type)
     if status:
         stmt = stmt.where(Question.status == status)
     total = db.scalar(stmt) or 0
-    q = (
-        select(Question)
-        .join(User, Question.created_by == User.id)
-        .where(User.enterprise_id == current.enterprise_id)
-    )
+    q = select(Question).join(User, Question.created_by == User.id)
+    q = restrict_query_by_creator_enterprise(q, current)
     if q_type:
         q = q.where(Question.q_type == q_type)
     if status:

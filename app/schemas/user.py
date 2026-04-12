@@ -29,8 +29,8 @@ class UserOut(BaseModel):
     username: str
     full_name: Optional[str] = None
     is_active: bool
-    enterprise_id: int
-    enterprise: EnterpriseBrief
+    enterprise_id: Optional[int] = None
+    enterprise: Optional[EnterpriseBrief] = None
     role: RoleBrief
     created_at: datetime
 

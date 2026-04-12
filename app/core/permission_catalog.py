@@ -112,3 +112,76 @@ def catalog_by_kind_sections() -> List[dict[str, Any]]:
         sections = [{"label": lb, "items": buckets[k][lb]} for lb in label_order[k]]
         out.append({"kind": k, "title": _KIND_TITLE.get(k, k), "sections": sections})
     return out
+
+
+def _split_label(lb: str) -> tuple[str, str]:
+    """label 形如「系统管理-用户」拆成模块与分组；无连字符则分组为「默认」。"""
+    if "-" in lb:
+        a, b = lb.split("-", 1)
+        return a.strip(), b.strip()
+    return lb.strip(), "默认"
+
+
+def catalog_mlf_tree() -> List[dict[str, Any]]:
+    """模块 -> 业务分组 -> 菜单/列表/表单 树形结构（不含字段与操作）。"""
+    module_order: List[str] = []
+    modules: dict[str, dict[str, Any]] = {}
+    for it in CATALOG:
+        k = it.get("kind")
+        if k not in ("menu", "list", "form"):
+            continue
+        mod, grp = _split_label(it["label"])
+        if mod not in modules:
+            module_order.append(mod)
+            modules[mod] = {"groupOrder": [], "groups": {}}
+        m = modules[mod]
+        if grp not in m["groups"]:
+            m["groupOrder"].append(grp)
+            m["groups"][grp] = {"menus": [], "lists": [], "forms": []}
+        key = {"menu": "menus", "list": "lists", "form": "forms"}[k]
+        m["groups"][grp][key].append(it)
+    result: List[dict[str, Any]] = []
+    for mod in module_order:
+        groups_out: List[dict[str, Any]] = []
+        for grp in modules[mod]["groupOrder"]:
+            g = modules[mod]["groups"][grp]
+            groups_out.append(
+                {
+                    "name": grp,
+                    "menus": g["menus"],
+                    "lists": g["lists"],
+                    "forms": g["forms"],
+                }
+            )
+        result.append({"module": mod, "groups": groups_out})
+    return result
+
+
+def catalog_field_tag_groups() -> List[dict[str, Any]]:
+    """字段类功能点按 label 分组，供横向标签勾选。"""
+    order: List[str] = []
+    buckets: dict[str, List[CatalogItem]] = {}
+    for it in CATALOG:
+        if it.get("kind") != "field":
+            continue
+        lb = it["label"]
+        if lb not in buckets:
+            buckets[lb] = []
+            order.append(lb)
+        buckets[lb].append(it)
+    return [{"label": lb, "items": buckets[lb]} for lb in order]
+
+
+def catalog_action_groups() -> List[dict[str, Any]]:
+    """操作类功能点按 label 分组。"""
+    order: List[str] = []
+    buckets: dict[str, List[CatalogItem]] = {}
+    for it in CATALOG:
+        if it.get("kind") != "action":
+            continue
+        lb = it["label"]
+        if lb not in buckets:
+            buckets[lb] = []
+            order.append(lb)
+        buckets[lb].append(it)
+    return [{"label": lb, "items": buckets[lb]} for lb in order]

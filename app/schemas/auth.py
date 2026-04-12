@@ -36,9 +36,16 @@ class UserMe(BaseModel):
     id: int
     username: str
     full_name: Optional[str] = None
-    enterprise_id: int
-    enterprise: EnterpriseBrief
+    enterprise_id: Optional[int] = None
+    enterprise: Optional[EnterpriseBrief] = None
     role: RoleBrief
     permissions: List[str]
 
     model_config = {"from_attributes": True}
+
+
+class MePasswordChange(BaseModel):
+    """当前用户修改登录密码。"""
+
+    old_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=6, max_length=128)

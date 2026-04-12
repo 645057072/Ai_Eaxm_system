@@ -7,7 +7,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_db, require_permission
+from app.core.permissions import is_super_role
 from app.core.security import hash_password
+from app.models.enterprise import Enterprise
 from app.models.user import Role, User
 from app.schemas.common import PageParams, PageResult
 from app.schemas.user import UserCreate, UserOut, UserUpdate
@@ -22,19 +24,24 @@ def list_users(
     current: Annotated[User, Depends(require_permission("list.user"))],
     page: Annotated[PageParams, Depends()],
     keyword: str | None = None,
+    enterprise_id: int | None = None,
 ) -> PageResult[UserOut]:
-    """本企业用户列表。"""
-    stmt = select(func.count()).select_from(User).where(User.enterprise_id == current.enterprise_id)
+    """用户列表：非超管仅本企业；超管可查全部，可按 enterprise_id 筛选。"""
+    stmt = select(func.count()).select_from(User)
+    q = select(User).options(joinedload(User.enterprise), joinedload(User.role))
+    if is_super_role(current):
+        if enterprise_id is not None:
+            stmt = stmt.where(User.enterprise_id == enterprise_id)
+            q = q.where(User.enterprise_id == enterprise_id)
+    else:
+        if current.enterprise_id is None:
+            return PageResult[UserOut](total=0, items=[])
+        stmt = stmt.where(User.enterprise_id == current.enterprise_id)
+        q = q.where(User.enterprise_id == current.enterprise_id)
     if keyword:
         stmt = stmt.where(User.username.like(f"%{keyword}%"))
-    total = db.scalar(stmt) or 0
-    q = (
-        select(User)
-        .options(joinedload(User.enterprise), joinedload(User.role))
-        .where(User.enterprise_id == current.enterprise_id)
-    )
-    if keyword:
         q = q.where(User.username.like(f"%{keyword}%"))
+    total = db.scalar(stmt) or 0
     rows = db.scalars(q.offset(page.skip).limit(page.limit).order_by(User.id.desc())).all()
     return PageResult[UserOut](total=int(total), items=[UserOut.model_validate(r) for r in rows])
 
@@ -45,18 +52,28 @@ def create_user(
     db: Annotated[Session, Depends(get_db)],
     current: Annotated[User, Depends(require_permission("action.user.create"))],
 ) -> UserOut:
-    """在本企业创建用户。"""
+    """在本企业创建用户；超管须指定 enterprise_id。"""
     if db.scalar(select(func.count()).select_from(User).where(User.username == body.username)):
         raise HTTPException(status_code=400, detail="用户名已存在")
     role = db.get(Role, body.role_id)
     if role is None:
         raise HTTPException(status_code=400, detail="角色不存在")
+    if is_super_role(current):
+        if body.enterprise_id is None:
+            raise HTTPException(status_code=400, detail="请指定所属企业")
+        if db.get(Enterprise, body.enterprise_id) is None:
+            raise HTTPException(status_code=400, detail="企业不存在")
+        eid = body.enterprise_id
+    else:
+        if current.enterprise_id is None:
+            raise HTTPException(status_code=400, detail="当前账号未关联企业，无法创建用户")
+        eid = current.enterprise_id
     u = User(
         username=body.username,
         password_hash=hash_password(body.password),
         full_name=body.full_name,
         role_id=body.role_id,
-        enterprise_id=current.enterprise_id,
+        enterprise_id=eid,
     )
     db.add(u)
     db.commit()
@@ -78,7 +95,8 @@ def get_user(
     ).first()
     if u is None:
         raise HTTPException(status_code=404, detail="用户不存在")
-    ensure_same_enterprise(current, u.enterprise_id)
+    if not is_super_role(current):
+        ensure_same_enterprise(current, u.enterprise_id)
     return UserOut.model_validate(u)
 
 
@@ -92,7 +110,8 @@ def update_user(
     u = db.get(User, user_id)
     if u is None:
         raise HTTPException(status_code=404, detail="用户不存在")
-    ensure_same_enterprise(current, u.enterprise_id)
+    if not is_super_role(current):
+        ensure_same_enterprise(current, u.enterprise_id)
     if body.full_name is not None:
         u.full_name = body.full_name
     if body.role_id is not None:
@@ -122,6 +141,7 @@ def delete_user(
     u = db.get(User, user_id)
     if u is None:
         raise HTTPException(status_code=404, detail="用户不存在")
-    ensure_same_enterprise(current, u.enterprise_id)
+    if not is_super_role(current):
+        ensure_same_enterprise(current, u.enterprise_id)
     db.delete(u)
     db.commit()

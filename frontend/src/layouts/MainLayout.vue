@@ -106,10 +106,11 @@
     </el-aside>
     <el-container>
       <el-header class="header">
-        <span class="who">
+        <span class="who who-click" title="个人信息与显示风格" @click="profileOpen = true">
           <AppEmoji name="user" size="sm" decorative />
           {{ auth.me?.username }}（{{ auth.me?.role?.name }}）
           <span v-if="auth.me?.enterprise?.name" class="ent">· {{ auth.me.enterprise.name }}</span>
+          <span v-else-if="auth.isAdmin" class="ent">· 全局管理</span>
         </span>
         <el-button type="danger" link @click="onLogout">
           <AppEmoji name="logout" size="sm" decorative />退出
@@ -120,13 +121,17 @@
       </el-main>
     </el-container>
   </el-container>
+  <ProfileDialog v-model="profileOpen" />
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import ProfileDialog from "@/components/ProfileDialog.vue";
 import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
+const profileOpen = ref(false);
 const route = useRoute();
 const router = useRouter();
 
@@ -173,6 +178,16 @@ function onLogout() {
   gap: 6px;
   color: #475569;
   font-size: 14px;
+}
+.who-click {
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.who-click:hover {
+  background: rgba(15, 23, 42, 0.06);
 }
 .ent {
   color: #94a3b8;

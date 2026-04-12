@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_permission
+from app.core.permissions import is_super_role
 from app.core.config import get_settings
 from app.models.enterprise import Enterprise
 from app.models.user import User
@@ -35,16 +36,28 @@ def list_enterprises(
     current: Annotated[User, Depends(require_permission("list.enterprise"))],
     page: Annotated[PageParams, Depends()],
 ) -> PageResult[EnterpriseOut]:
-    """本企业档案（通常仅一条）。"""
-    stmt = select(func.count()).select_from(Enterprise).where(Enterprise.id == current.enterprise_id)
-    total = db.scalar(stmt) or 0
-    rows = db.scalars(
-        select(Enterprise)
-        .where(Enterprise.id == current.enterprise_id)
-        .offset(page.skip)
-        .limit(page.limit)
-        .order_by(Enterprise.id.desc())
-    ).all()
+    """企业档案：超管查看全部；其余用户仅本企业。"""
+    if is_super_role(current):
+        stmt = select(func.count()).select_from(Enterprise)
+        total = db.scalar(stmt) or 0
+        rows = db.scalars(
+            select(Enterprise)
+            .offset(page.skip)
+            .limit(page.limit)
+            .order_by(Enterprise.id.desc())
+        ).all()
+    else:
+        if current.enterprise_id is None:
+            return PageResult[EnterpriseOut](total=0, items=[])
+        stmt = select(func.count()).select_from(Enterprise).where(Enterprise.id == current.enterprise_id)
+        total = db.scalar(stmt) or 0
+        rows = db.scalars(
+            select(Enterprise)
+            .where(Enterprise.id == current.enterprise_id)
+            .offset(page.skip)
+            .limit(page.limit)
+            .order_by(Enterprise.id.desc())
+        ).all()
     return PageResult[EnterpriseOut](total=int(total), items=[EnterpriseOut.model_validate(r) for r in rows])
 
 

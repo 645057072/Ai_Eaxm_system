@@ -9,13 +9,18 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_db, require_any_permission, require_permission
+from app.core.permissions import is_super_role
 from app.models.exam import ExamAttempt, ExamPaper, ExamPaperItem, ExamSession
 from app.models.user import User
 from app.schemas.attempt import AttemptStartOut
 from app.schemas.common import PageParams, PageResult
 from app.schemas.exam_take import TakeDataOut, TakeQuestionItem
 from app.schemas.session import ExamSessionCreate, ExamSessionOut, ExamSessionUpdate
-from app.services.data_scope import assert_paper_in_enterprise, assert_session_in_enterprise
+from app.services.data_scope import (
+    assert_paper_in_enterprise,
+    assert_session_in_enterprise,
+    restrict_query_by_creator_enterprise,
+)
 
 router = APIRouter()
 
@@ -38,8 +43,11 @@ def list_available_for_student(
         ExamSession.end_at.is_not(None),
         ExamSession.start_at <= now,
         ExamSession.end_at >= now,
-        User.enterprise_id == current.enterprise_id,
     ]
+    if not is_super_role(current):
+        if current.enterprise_id is None:
+            return PageResult[ExamSessionOut](total=0, items=[])
+        conds.append(User.enterprise_id == current.enterprise_id)
     total = (
         db.scalar(
             select(func.count())
@@ -68,20 +76,13 @@ def list_sessions(
     status: str | None = None,
 ) -> PageResult[ExamSessionOut]:
     """本企业场次列表。"""
-    stmt = (
-        select(func.count())
-        .select_from(ExamSession)
-        .join(User, ExamSession.created_by == User.id)
-        .where(User.enterprise_id == current.enterprise_id)
-    )
+    stmt = select(func.count()).select_from(ExamSession).join(User, ExamSession.created_by == User.id)
+    stmt = restrict_query_by_creator_enterprise(stmt, current)
     if status:
         stmt = stmt.where(ExamSession.status == status)
     total = db.scalar(stmt) or 0
-    q = (
-        select(ExamSession)
-        .join(User, ExamSession.created_by == User.id)
-        .where(User.enterprise_id == current.enterprise_id)
-    )
+    q = select(ExamSession).join(User, ExamSession.created_by == User.id)
+    q = restrict_query_by_creator_enterprise(q, current)
     if status:
         q = q.where(ExamSession.status == status)
     rows = db.scalars(q.offset(page.skip).limit(page.limit).order_by(ExamSession.id.desc())).all()

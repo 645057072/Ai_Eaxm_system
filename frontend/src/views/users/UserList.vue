@@ -14,7 +14,7 @@
       <el-table-column v-if="auth.can('field.user.username')" prop="username" label="用户名" />
       <el-table-column v-if="auth.can('field.user.full_name')" prop="full_name" label="姓名" />
       <el-table-column v-if="auth.can('field.user.enterprise')" label="所属企业" min-width="120" show-overflow-tooltip>
-        <template #default="{ row }">{{ (row.enterprise as { name?: string })?.name }}</template>
+        <template #default="{ row }">{{ (row.enterprise as { name?: string } | null)?.name || "—" }}</template>
       </el-table-column>
       <el-table-column v-if="auth.can('field.user.role')" label="角色">
         <template #default="{ row }">
@@ -57,17 +57,28 @@
       />
     </div>
 
-    <el-dialog v-model="dlg" :title="editId ? '编辑用户' : '新建用户'" width="480px">
-      <el-form label-width="88px">
+    <el-dialog v-model="dlg" :title="editId ? '编辑用户' : '新建用户'" width="520px">
+      <el-form label-width="100px">
         <el-form-item v-if="!editId && auth.can('field.user.username')" label="用户名"
           ><el-input v-model="form.username"
         /></el-form-item>
-        <el-form-item v-if="auth.can('field.user.password')" label="密码"
-          ><el-input v-model="form.password" type="password" :placeholder="editId ? '不改请留空' : '必填'"
-        /></el-form-item>
+        <el-form-item v-if="!editId && auth.isAdmin && auth.can('field.user.enterprise')" label="所属企业" required>
+          <el-select v-model="form.enterprise_id" placeholder="请选择企业" filterable style="width: 100%">
+            <el-option v-for="e in enterpriseOpts" :key="e.id" :label="e.name" :value="e.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="!editId && auth.can('field.user.password')" label="密码" required>
+          <el-input v-model="form.password" type="password" placeholder="必填" />
+        </el-form-item>
+        <template v-if="editId && auth.can('field.user.password') && (auth.isAdmin || auth.can('field.user.enterprise'))">
+          <el-divider content-position="left">密码管理（重置）</el-divider>
+          <el-form-item label="新密码">
+            <el-input v-model="form.password" type="password" placeholder="填写则重置为该密码" />
+          </el-form-item>
+        </template>
         <el-form-item v-if="auth.can('field.user.full_name')" label="姓名"><el-input v-model="form.full_name" /></el-form-item>
-        <el-form-item v-if="auth.can('field.user.enterprise')" label="所属企业">
-          <el-input :model-value="auth.me?.enterprise?.name || ''" disabled />
+        <el-form-item v-if="editId && auth.can('field.user.enterprise')" label="所属企业">
+          <el-input :model-value="(editEnterpriseName as string) || '—'" disabled />
         </el-form-item>
         <el-form-item v-if="auth.can('field.user.role')" label="角色">
           <el-select v-model="form.role_id" style="width: 100%">
@@ -89,6 +100,8 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { apiErrorMessage } from "@/api/http";
+import { listEnterprises } from "@/api/enterprises";
 import { listUsers, createUser, patchUser, deleteUser } from "@/api/users";
 import { listRoles } from "@/api/roles";
 import { useAuthStore } from "@/stores/auth";
@@ -116,22 +129,31 @@ const form = reactive({
   full_name: "",
   role_id: 1,
   is_active: true,
+  enterprise_id: null as number | null,
 });
+const enterpriseOpts = ref<{ id: number; name: string }[]>([]);
+const editEnterpriseName = ref("");
 
 async function load() {
-  const skip = (page.value - 1) * limit.value;
-  const { data } = await listUsers({ skip, limit: limit.value, keyword: keyword.value || undefined });
-  total.value = data.total;
-  rows.value = data.items;
+  try {
+    const skip = (page.value - 1) * limit.value;
+    const { data } = await listUsers({ skip, limit: limit.value, keyword: keyword.value || undefined });
+    total.value = data.total;
+    rows.value = data.items;
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "加载失败"));
+  }
 }
 
 function openCreate() {
   editId.value = null;
+  editEnterpriseName.value = "";
   form.username = "";
   form.password = "";
   form.full_name = "";
   form.role_id = roleOpts.value[0]?.id ?? 1;
   form.is_active = true;
+  form.enterprise_id = enterpriseOpts.value[0]?.id ?? auth.me?.enterprise?.id ?? null;
   dlg.value = true;
 }
 
@@ -141,6 +163,7 @@ function openEdit(row: Record<string, unknown>) {
   form.full_name = (row.full_name as string) || "";
   form.role_id = (row.role as { id: number }).id;
   form.is_active = !!row.is_active;
+  editEnterpriseName.value = ((row.enterprise as { name?: string } | null)?.name as string) || "";
   dlg.value = true;
 }
 
@@ -151,12 +174,18 @@ async function save() {
         ElMessage.warning("请填写用户名和密码");
         return;
       }
-      await createUser({
+      if (auth.isAdmin && (form.enterprise_id == null || form.enterprise_id < 1)) {
+        ElMessage.warning("请选择所属企业");
+        return;
+      }
+      const body: Record<string, unknown> = {
         username: form.username,
         password: form.password,
         full_name: form.full_name || null,
         role_id: form.role_id,
-      });
+      };
+      if (auth.isAdmin) body.enterprise_id = form.enterprise_id;
+      await createUser(body);
     } else {
       const body: Record<string, unknown> = {
         full_name: form.full_name || null,
@@ -169,8 +198,8 @@ async function save() {
     ElMessage.success("已保存");
     dlg.value = false;
     await load();
-  } catch {
-    ElMessage.error("保存失败");
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "保存失败"));
   }
 }
 
@@ -184,6 +213,14 @@ async function onDelete(row: Record<string, unknown>) {
 onMounted(async () => {
   const { data } = await listRoles();
   roleOpts.value = data;
+  if (auth.isAdmin) {
+    try {
+      const { data: ent } = await listEnterprises({ skip: 0, limit: 200 });
+      enterpriseOpts.value = ent.items.map((x: { id: number; name: string }) => ({ id: x.id, name: x.name }));
+    } catch {
+      enterpriseOpts.value = [];
+    }
+  }
   await load();
 });
 </script>

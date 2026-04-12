@@ -58,8 +58,8 @@
     <el-dialog
       v-model="permVisible"
       title="功能授权"
-      width="720px"
-      top="6vh"
+      width="820px"
+      top="5vh"
       destroy-on-close
       class="perm-dialog"
       @closed="onPermDialogClosed"
@@ -67,23 +67,60 @@
       <div v-if="permLoading" class="perm-loading">加载中...</div>
       <template v-else>
         <p class="perm-tip">
-          按「菜单 / 列表 / 表单 / 字段 / 操作」分层勾选；未授权则无法访问对应功能与数据。新业务上线时请在服务端 CATALOG 中登记功能点。
+          模块 / 菜单 / 列表 / 表单以树形分组勾选；字段以横向标签勾选；操作类在下方勾选。新业务请在服务端 CATALOG 登记功能点。
         </p>
-        <el-collapse v-model="permCollapseActive" class="perm-collapse">
-          <el-collapse-item v-for="layer in catalogByKind" :key="layer.kind" :name="layer.kind">
-            <template #title>
-              <span class="perm-layer-title">{{ layer.title }}</span>
-            </template>
-            <div v-for="sec in layer.sections" :key="layer.kind + sec.label" class="perm-group">
-              <div class="perm-label">{{ sec.label }}</div>
-              <el-checkbox-group v-model="selectedList">
-                <el-checkbox v-for="it in sec.items" :key="it.code" :value="it.code" class="perm-item">
-                  {{ it.name }}
-                </el-checkbox>
-              </el-checkbox-group>
+        <div class="perm-tree-wrap">
+          <div v-for="mod in treeMlf" :key="mod.module" class="perm-mod">
+            <div class="perm-mod-title">{{ mod.module }}</div>
+            <div v-for="g in mod.groups" :key="mod.module + g.name" class="perm-group-block">
+              <div class="perm-sub-title">{{ g.name }}</div>
+              <div v-if="g.menus.length" class="perm-row">
+                <span class="perm-kind">菜单</span>
+                <el-checkbox-group v-model="selectedList" class="perm-inline-group">
+                  <el-checkbox v-for="it in g.menus" :key="it.code" :value="it.code">{{ it.name }}</el-checkbox>
+                </el-checkbox-group>
+              </div>
+              <div v-if="g.lists.length" class="perm-row">
+                <span class="perm-kind">列表</span>
+                <el-checkbox-group v-model="selectedList" class="perm-inline-group">
+                  <el-checkbox v-for="it in g.lists" :key="it.code" :value="it.code">{{ it.name }}</el-checkbox>
+                </el-checkbox-group>
+              </div>
+              <div v-if="g.forms.length" class="perm-row">
+                <span class="perm-kind">表单</span>
+                <el-checkbox-group v-model="selectedList" class="perm-inline-group">
+                  <el-checkbox v-for="it in g.forms" :key="it.code" :value="it.code">{{ it.name }}</el-checkbox>
+                </el-checkbox-group>
+              </div>
             </div>
-          </el-collapse-item>
-        </el-collapse>
+          </div>
+        </div>
+        <div v-if="fieldGroups.length" class="perm-fields-block">
+          <div class="perm-section-title">字段授权（横向标签）</div>
+          <div v-for="fg in fieldGroups" :key="fg.label" class="perm-field-row">
+            <div class="perm-field-label">{{ fg.label }}</div>
+            <div class="field-tags">
+              <el-check-tag
+                v-for="it in fg.items"
+                :key="it.code"
+                :checked="selectedList.includes(it.code)"
+                class="field-tag"
+                @change="(on: boolean) => toggleCode(it.code, on)"
+              >
+                {{ it.name }}
+              </el-check-tag>
+            </div>
+          </div>
+        </div>
+        <div v-if="actionGroups.length" class="perm-actions-block">
+          <div class="perm-section-title">操作权限</div>
+          <div v-for="ag in actionGroups" :key="ag.label" class="perm-group">
+            <div class="perm-label">{{ ag.label }}</div>
+            <el-checkbox-group v-model="selectedList" class="perm-inline-group">
+              <el-checkbox v-for="it in ag.items" :key="it.code" :value="it.code">{{ it.name }}</el-checkbox>
+            </el-checkbox-group>
+          </div>
+        </div>
         <div class="perm-actions">
           <el-button type="primary" @click="savePerm">保存授权</el-button>
         </div>
@@ -96,7 +133,11 @@
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiErrorMessage } from "@/api/http";
-import { fetchPermissionCatalog, type CatalogByKindLayer } from "@/api/permissions";
+import {
+  fetchPermissionCatalog,
+  type CatalogMlfModule,
+  type CatalogItem,
+} from "@/api/permissions";
 import { listRoles, createRole, patchRole, deleteRole, fetchRolePermissions, saveRolePermissions } from "@/api/roles";
 import { useAuthStore } from "@/stores/auth";
 
@@ -118,10 +159,18 @@ const form = reactive({
 const permVisible = ref(false);
 const permLoading = ref(false);
 const permRoleId = ref<number | null>(null);
-const catalogByKind = ref<CatalogByKindLayer[]>([]);
+const treeMlf = ref<CatalogMlfModule[]>([]);
+const fieldGroups = ref<{ label: string; items: CatalogItem[] }[]>([]);
+const actionGroups = ref<{ label: string; items: CatalogItem[] }[]>([]);
 const selectedList = ref<string[]>([]);
-/** 默认展开全部分层，便于一次性浏览 */
-const permCollapseActive = ref<string[]>(["menu", "list", "form", "field", "action"]);
+
+function toggleCode(code: string, on: boolean) {
+  if (on) {
+    if (!selectedList.value.includes(code)) selectedList.value.push(code);
+  } else {
+    selectedList.value = selectedList.value.filter((c) => c !== code);
+  }
+}
 
 function isReserved(code: string) {
   return RESERVED.has(code);
@@ -165,17 +214,9 @@ async function openPerm(row: Record<string, unknown>) {
       fetchPermissionCatalog(),
       fetchRolePermissions(row.id as number),
     ]);
-    if (cat.byKind?.length) {
-      catalogByKind.value = cat.byKind;
-      permCollapseActive.value = cat.byKind.map((x) => x.kind);
-    } else if (cat.groups?.length) {
-      catalogByKind.value = [
-        { kind: "all", title: "功能点", sections: cat.groups.map((g) => ({ label: g.label, items: g.items })) },
-      ];
-      permCollapseActive.value = ["all"];
-    } else {
-      catalogByKind.value = [];
-    }
+    treeMlf.value = cat.treeMlf?.length ? cat.treeMlf : [];
+    fieldGroups.value = cat.fieldGroups?.length ? cat.fieldGroups : [];
+    actionGroups.value = cat.actionGroups?.length ? cat.actionGroups : [];
     selectedList.value = [...codes];
   } catch (e) {
     ElMessage.error(apiErrorMessage(e, "加载授权数据失败"));
@@ -198,7 +239,9 @@ async function savePerm() {
 
 function onPermDialogClosed() {
   permRoleId.value = null;
-  catalogByKind.value = [];
+  treeMlf.value = [];
+  fieldGroups.value = [];
+  actionGroups.value = [];
   selectedList.value = [];
 }
 
@@ -282,8 +325,80 @@ onMounted(load);
 .perm-collapse {
   border: none;
 }
-.perm-layer-title {
+.perm-tree-wrap {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fafbfc;
+  max-height: 42vh;
+  overflow-y: auto;
+}
+.perm-mod {
+  margin-bottom: 14px;
+}
+.perm-mod:last-child {
+  margin-bottom: 0;
+}
+.perm-mod-title {
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed #cbd5e1;
+}
+.perm-group-block {
+  margin-left: 8px;
+  margin-bottom: 12px;
+  padding-left: 10px;
+  border-left: 2px solid #e2e8f0;
+}
+.perm-sub-title {
   font-weight: 600;
   color: #334155;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.perm-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.perm-kind {
+  flex: 0 0 40px;
+  font-size: 12px;
+  color: #64748b;
+  padding-top: 4px;
+}
+.perm-inline-group {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.perm-fields-block,
+.perm-actions-block {
+  margin-top: 16px;
+}
+.perm-section-title {
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 10px;
+}
+.perm-field-row {
+  margin-bottom: 12px;
+}
+.perm-field-label {
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 6px;
+}
+.field-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.field-tag {
+  margin: 0;
 }
 </style>
