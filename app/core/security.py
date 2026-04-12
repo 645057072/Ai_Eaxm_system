@@ -1,23 +1,31 @@
 # -*- coding: utf-8 -*-
-"""密码哈希与 JWT 签发校验。"""
+"""密码哈希与 JWT 签发校验。直接使用 bcrypt，避免 passlib 与 bcrypt 4.x 不兼容（如缺少 __about__）导致种子脚本与登录失败。"""
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.core.config import get_settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    if not plain or not hashed:
+        return False
+    try:
+        return bcrypt.checkpw(
+            plain.encode("utf-8"),
+            hashed.encode("utf-8"),
+        )
+    except ValueError:
+        return False
 
 
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    # bcrypt 密码字节上限 72，常规模块已足够
+    digest = bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt())
+    return digest.decode("utf-8")
 
 
 def create_access_token(subject: str | int, extra: Optional[dict[str, Any]] = None) -> str:
