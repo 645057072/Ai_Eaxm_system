@@ -37,7 +37,7 @@
     <el-dialog v-model="dlg" :title="isCreate ? '新建角色' : '编辑角色'" width="480px">
       <el-form label-width="100px">
         <el-form-item v-if="isCreate" label="角色编码" required>
-          <el-input v-model="form.code" placeholder="小写字母开头，如 auditor" />
+          <el-input v-model="form.code" placeholder="字母开头，保存时自动转小写，如 auditor" />
         </el-form-item>
         <el-form-item v-else label="角色编码">
           <el-input :model-value="form.code" disabled />
@@ -55,30 +55,48 @@
       </template>
     </el-dialog>
 
-    <el-drawer v-model="permVisible" title="功能授权" size="420px" destroy-on-close>
+    <el-dialog
+      v-model="permVisible"
+      title="功能授权"
+      width="720px"
+      top="6vh"
+      destroy-on-close
+      class="perm-dialog"
+      @closed="onPermDialogClosed"
+    >
       <div v-if="permLoading" class="perm-loading">加载中...</div>
       <template v-else>
-        <p class="perm-tip">按标签勾选本角色可使用的菜单、列表、表单字段与操作；未授权则无法访问对应功能与数据。</p>
-        <div v-for="g in catalogGroups" :key="g.label" class="perm-group">
-          <div class="perm-label">{{ g.label }}</div>
-          <el-checkbox-group v-model="selectedList">
-            <el-checkbox v-for="it in g.items" :key="it.code" :label="it.code" class="perm-item">
-              {{ it.name }}（{{ it.kind }}）
-            </el-checkbox>
-          </el-checkbox-group>
-        </div>
+        <p class="perm-tip">
+          按「菜单 / 列表 / 表单 / 字段 / 操作」分层勾选；未授权则无法访问对应功能与数据。新业务上线时请在服务端 CATALOG 中登记功能点。
+        </p>
+        <el-collapse v-model="permCollapseActive" class="perm-collapse">
+          <el-collapse-item v-for="layer in catalogByKind" :key="layer.kind" :name="layer.kind">
+            <template #title>
+              <span class="perm-layer-title">{{ layer.title }}</span>
+            </template>
+            <div v-for="sec in layer.sections" :key="layer.kind + sec.label" class="perm-group">
+              <div class="perm-label">{{ sec.label }}</div>
+              <el-checkbox-group v-model="selectedList">
+                <el-checkbox v-for="it in sec.items" :key="it.code" :value="it.code" class="perm-item">
+                  {{ it.name }}
+                </el-checkbox>
+              </el-checkbox-group>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
         <div class="perm-actions">
           <el-button type="primary" @click="savePerm">保存授权</el-button>
         </div>
       </template>
-    </el-drawer>
+    </el-dialog>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from "vue";
+import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { fetchPermissionCatalog } from "@/api/permissions";
+import { apiErrorMessage } from "@/api/http";
+import { fetchPermissionCatalog, type CatalogByKindLayer } from "@/api/permissions";
 import { listRoles, createRole, patchRole, deleteRole, fetchRolePermissions, saveRolePermissions } from "@/api/roles";
 import { useAuthStore } from "@/stores/auth";
 
@@ -100,8 +118,10 @@ const form = reactive({
 const permVisible = ref(false);
 const permLoading = ref(false);
 const permRoleId = ref<number | null>(null);
-const catalogGroups = ref<{ label: string; items: { code: string; name: string; kind: string }[] }[]>([]);
+const catalogByKind = ref<CatalogByKindLayer[]>([]);
 const selectedList = ref<string[]>([]);
+/** 默认展开全部分层，便于一次性浏览 */
+const permCollapseActive = ref<string[]>(["menu", "list", "form", "field", "action"]);
 
 function isReserved(code: string) {
   return RESERVED.has(code);
@@ -145,10 +165,20 @@ async function openPerm(row: Record<string, unknown>) {
       fetchPermissionCatalog(),
       fetchRolePermissions(row.id as number),
     ]);
-    catalogGroups.value = cat.groups || [];
+    if (cat.byKind?.length) {
+      catalogByKind.value = cat.byKind;
+      permCollapseActive.value = cat.byKind.map((x) => x.kind);
+    } else if (cat.groups?.length) {
+      catalogByKind.value = [
+        { kind: "all", title: "功能点", sections: cat.groups.map((g) => ({ label: g.label, items: g.items })) },
+      ];
+      permCollapseActive.value = ["all"];
+    } else {
+      catalogByKind.value = [];
+    }
     selectedList.value = [...codes];
-  } catch {
-    ElMessage.error("加载授权数据失败");
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "加载授权数据失败"));
     permVisible.value = false;
   } finally {
     permLoading.value = false;
@@ -161,18 +191,16 @@ async function savePerm() {
     await saveRolePermissions(permRoleId.value, selectedList.value);
     ElMessage.success("已保存功能授权");
     permVisible.value = false;
-  } catch {
-    ElMessage.error("保存失败");
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "保存失败"));
   }
 }
 
-watch(permVisible, (v) => {
-  if (!v) {
-    permRoleId.value = null;
-    catalogGroups.value = [];
-    selectedList.value = [];
-  }
-});
+function onPermDialogClosed() {
+  permRoleId.value = null;
+  catalogByKind.value = [];
+  selectedList.value = [];
+}
 
 async function save() {
   if (!form.name.trim()) {
@@ -199,8 +227,8 @@ async function save() {
     ElMessage.success("已保存");
     dlg.value = false;
     await load();
-  } catch {
-    ElMessage.error("保存失败");
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "保存失败"));
   }
 }
 
@@ -245,5 +273,17 @@ onMounted(load);
   padding: 24px;
   text-align: center;
   color: #64748b;
+}
+.perm-dialog :deep(.el-dialog__body) {
+  padding-top: 8px;
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+}
+.perm-collapse {
+  border: none;
+}
+.perm-layer-title {
+  font-weight: 600;
+  color: #334155;
 }
 </style>

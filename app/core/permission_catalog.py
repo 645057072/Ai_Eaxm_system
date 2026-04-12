@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""系统全局功能点目录（菜单、列表、表单、字段、操作），供角色授权与前后端校验。"""
+"""系统全局功能点目录（菜单、列表、表单、字段、操作），供角色授权与前后端校验。
+
+新增业务菜单、接口或按钮时，须在本文件 CATALOG 中追加对应条目（含 code/name/label/kind），
+并保证 app.core.permission_catalog.ALL_CODES 与路由 meta.permission 一致，否则授权界面不会出现新功能点。
+"""
 
 from typing import Any, List, TypedDict
 
@@ -75,3 +79,36 @@ def catalog_groups() -> List[dict[str, Any]]:
             order.append(lb)
         buckets[lb].append(it)
     return [{"label": lb, "items": buckets[lb]} for lb in order]
+
+
+# kind 展示顺序与中文标题（授权弹窗按层级：菜单 / 列表 / 表单 / 字段 / 操作）
+_KIND_ORDER = ("menu", "list", "form", "field", "action")
+_KIND_TITLE: dict[str, str] = {
+    "menu": "菜单",
+    "list": "列表",
+    "form": "表单",
+    "field": "字段",
+    "action": "操作",
+}
+
+
+def catalog_by_kind_sections() -> List[dict[str, Any]]:
+    """按 kind 再按业务标签（label）分组，供前端弹窗分层勾选。"""
+    label_order: dict[str, List[str]] = {k: [] for k in _KIND_ORDER}
+    buckets: dict[str, dict[str, List[CatalogItem]]] = {k: {} for k in _KIND_ORDER}
+    for it in CATALOG:
+        k = it.get("kind")
+        if k not in buckets:
+            continue
+        lb = it["label"]
+        if lb not in buckets[k]:
+            buckets[k][lb] = []
+            label_order[k].append(lb)
+        buckets[k][lb].append(it)
+    out: List[dict[str, Any]] = []
+    for k in _KIND_ORDER:
+        if not label_order[k]:
+            continue
+        sections = [{"label": lb, "items": buckets[k][lb]} for lb in label_order[k]]
+        out.append({"kind": k, "title": _KIND_TITLE.get(k, k), "sections": sections})
+    return out

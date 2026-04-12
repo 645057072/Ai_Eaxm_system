@@ -4,6 +4,9 @@
       <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建企业</el-button>
     </div>
     <el-table :data="rows" style="width: 100%">
+      <template #empty>
+        <el-empty description="暂无企业档案。本列表仅展示当前账号所属企业；新建后若仍无数据，请确认账号 enterprise_id 与库中企业记录一致。" />
+      </template>
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="name" label="企业名称" min-width="140" show-overflow-tooltip />
       <el-table-column prop="tax_id" label="纳税人识别号" width="160" show-overflow-tooltip />
@@ -80,7 +83,7 @@
 import { onMounted, reactive, ref } from "vue";
 import type { UploadFile, UploadFiles } from "element-plus";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { http } from "@/api/http";
+import { apiErrorMessage, http } from "@/api/http";
 import {
   listEnterprises,
   createEnterprise,
@@ -108,10 +111,16 @@ const form = reactive({
 });
 
 async function load() {
-  const skip = (page.value - 1) * limit.value;
-  const { data } = await listEnterprises({ skip, limit: limit.value });
-  total.value = data.total;
-  rows.value = data.items;
+  try {
+    const skip = (page.value - 1) * limit.value;
+    const { data } = await listEnterprises({ skip, limit: limit.value });
+    total.value = data.total;
+    rows.value = data.items;
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "加载企业列表失败"));
+    total.value = 0;
+    rows.value = [];
+  }
 }
 
 function openCreate() {
@@ -180,8 +189,8 @@ async function save() {
     }
     dlg.value = false;
     await load();
-  } catch {
-    ElMessage.error("保存失败");
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "保存失败"));
   }
 }
 
