@@ -15,15 +15,16 @@ class CatalogItem(TypedDict):
     kind: str
 
 
-# kind: menu | list | form | field | action
+# kind: menu | list | form | field | action | module
 CATALOG: List[CatalogItem] = [
     {"code": "menu.home", "name": "首页", "label": "导航与入口", "kind": "menu"},
-    {"code": "menu.exam.qb_center", "name": "题库中心", "label": "考试业务", "kind": "menu"},
+    {"code": "menu.exam.qb_center", "name": "题库中心", "label": "考试业务", "kind": "module"},
     {"code": "menu.exam.question_manage", "name": "题库管理", "label": "考试业务", "kind": "menu"},
     {"code": "menu.exam.paper_manage", "name": "试卷管理", "label": "考试业务", "kind": "menu"},
     {"code": "menu.exam.paper_publish", "name": "试卷发布", "label": "考试业务", "kind": "menu"},
-    {"code": "menu.exam.sessions", "name": "考试场次", "label": "考试业务", "kind": "menu"},
-    {"code": "menu.exam.available", "name": "可参加的考试", "label": "考试业务", "kind": "menu"},
+    {"code": "module.exam.paper_archive", "name": "试卷档案", "label": "考试业务", "kind": "module"},
+    {"code": "menu.exam.sessions", "name": "考试场次", "label": "考试业务", "kind": "module"},
+    {"code": "menu.exam.available", "name": "可参加的考试", "label": "考试业务", "kind": "module"},
     {"code": "menu.system.users", "name": "用户信息", "label": "系统管理-用户", "kind": "menu"},
     {"code": "menu.system.roles", "name": "角色权限", "label": "系统管理-用户", "kind": "menu"},
     {"code": "menu.system.enterprise", "name": "企业信息", "label": "系统管理-基础信息", "kind": "menu"},
@@ -34,9 +35,9 @@ CATALOG: List[CatalogItem] = [
     {"code": "menu.system.online", "name": "在线用户", "label": "系统管理-监管服务", "kind": "menu"},
     {"code": "menu.system.logs", "name": "日志管理", "label": "系统管理-监管服务", "kind": "menu"},
     {"code": "menu.bi", "name": "数智BI中心", "label": "数据分析", "kind": "menu"},
-    {"code": "list.question", "name": "题目列表", "label": "列表资源", "kind": "list"},
-    {"code": "list.paper", "name": "试卷列表", "label": "列表资源", "kind": "list"},
-    {"code": "list.session", "name": "场次列表", "label": "列表资源", "kind": "list"},
+    {"code": "list.question", "name": "题库列表", "label": "题库管理", "kind": "list"},
+    {"code": "list.paper", "name": "试卷列表", "label": "试卷管理", "kind": "list"},
+    {"code": "list.session", "name": "场次列表", "label": "考试场次", "kind": "list"},
     {"code": "list.user", "name": "用户列表", "label": "列表资源", "kind": "list"},
     {"code": "list.role", "name": "角色列表", "label": "列表资源", "kind": "list"},
     {"code": "list.enterprise", "name": "企业列表", "label": "列表资源", "kind": "list"},
@@ -47,6 +48,11 @@ CATALOG: List[CatalogItem] = [
     {"code": "form.enterprise", "name": "企业表单", "label": "表单", "kind": "form"},
     {"code": "form.role", "name": "角色表单", "label": "表单", "kind": "form"},
     {"code": "form.course", "name": "课程表单", "label": "表单", "kind": "form"},
+    {"code": "form.question", "name": "题库新建表单", "label": "题库管理", "kind": "form"},
+    {"code": "form.question_import", "name": "导入题库", "label": "题库管理", "kind": "form"},
+    {"code": "form.question_batch", "name": "题库批量操作", "label": "题库管理", "kind": "form"},
+    {"code": "form.paper", "name": "试卷新建表单", "label": "试卷管理", "kind": "form"},
+    {"code": "form.session", "name": "场次新建表单", "label": "考试场次", "kind": "form"},
     {"code": "field.user.username", "name": "用户名", "label": "字段-用户", "kind": "field"},
     {"code": "field.user.password", "name": "密码", "label": "字段-用户", "kind": "field"},
     {"code": "field.user.full_name", "name": "姓名", "label": "字段-用户", "kind": "field"},
@@ -60,6 +66,29 @@ CATALOG: List[CatalogItem] = [
     {"code": "field.course.period", "name": "课程期间", "label": "字段-课程", "kind": "field"},
     {"code": "field.course.description", "name": "课程简介", "label": "字段-课程", "kind": "field"},
     {"code": "field.course.enterprise", "name": "所属企业", "label": "字段-课程", "kind": "field"},
+    {"code": "field.question.question_no", "name": "题号", "label": "字段-题库", "kind": "field"},
+    {"code": "field.question.q_type", "name": "题型", "label": "字段-题库", "kind": "field"},
+    {"code": "field.question.stem", "name": "题干", "label": "字段-题库", "kind": "field"},
+    {"code": "field.question.options_json", "name": "选项", "label": "字段-题库", "kind": "field"},
+    {"code": "field.question.answer_json", "name": "答案", "label": "字段-题库", "kind": "field"},
+    {"code": "field.question.analysis", "name": "解析", "label": "字段-题库", "kind": "field"},
+    {"code": "field.question.difficulty", "name": "难度", "label": "字段-题库", "kind": "field"},
+    {"code": "field.question.status", "name": "状态", "label": "字段-题库", "kind": "field"},
+    {"code": "field.question.course_id", "name": "课程", "label": "字段-题库", "kind": "field"},
+    {"code": "field.question.enterprise_id", "name": "所属企业", "label": "字段-题库", "kind": "field"},
+    {"code": "field.paper.title", "name": "试卷名称", "label": "字段-试卷", "kind": "field"},
+    {"code": "field.paper.paper_no", "name": "试卷编号", "label": "字段-试卷", "kind": "field"},
+    {"code": "field.paper.course_id", "name": "课程", "label": "字段-试卷", "kind": "field"},
+    {"code": "field.paper.paper_type", "name": "试卷类型", "label": "字段-试卷", "kind": "field"},
+    {"code": "field.paper.level_id", "name": "试卷等级", "label": "字段-试卷", "kind": "field"},
+    {"code": "field.paper.description", "name": "说明", "label": "字段-试卷", "kind": "field"},
+    {"code": "field.paper.duration_minutes", "name": "时长(分钟)", "label": "字段-试卷", "kind": "field"},
+    {"code": "field.paper.rules", "name": "组卷规则", "label": "字段-试卷", "kind": "field"},
+    {"code": "field.session.paper_id", "name": "试卷", "label": "字段-场次", "kind": "field"},
+    {"code": "field.session.title", "name": "场次名称", "label": "字段-场次", "kind": "field"},
+    {"code": "field.session.start_at", "name": "开始时间", "label": "字段-场次", "kind": "field"},
+    {"code": "field.session.end_at", "name": "结束时间", "label": "字段-场次", "kind": "field"},
+    {"code": "field.session.status", "name": "状态", "label": "字段-场次", "kind": "field"},
     {"code": "action.user.create", "name": "新建用户", "label": "操作", "kind": "action"},
     {"code": "action.user.update", "name": "编辑用户", "label": "操作", "kind": "action"},
     {"code": "action.user.delete", "name": "删除用户", "label": "操作", "kind": "action"},
@@ -74,12 +103,12 @@ CATALOG: List[CatalogItem] = [
     {"code": "action.course.update", "name": "编辑课程", "label": "操作", "kind": "action"},
     {"code": "action.course.delete", "name": "删除课程", "label": "操作", "kind": "action"},
     {"code": "action.paper_level.manage", "name": "试卷等级维护", "label": "操作", "kind": "action"},
-    {"code": "action.question.manage", "name": "题目维护", "label": "操作", "kind": "action"},
-    {"code": "action.question.import", "name": "导入题库", "label": "操作", "kind": "action"},
-    {"code": "action.question.batch", "name": "题目批量操作", "label": "操作", "kind": "action"},
-    {"code": "action.paper.manage", "name": "试卷维护", "label": "操作", "kind": "action"},
-    {"code": "action.session.manage", "name": "场次维护", "label": "操作", "kind": "action"},
-    {"code": "action.exam.take", "name": "在线考试作答", "label": "操作", "kind": "action"},
+    {"code": "action.question.manage", "name": "题目维护", "label": "题库管理", "kind": "action"},
+    {"code": "action.question.import", "name": "导入题库", "label": "题库管理", "kind": "action"},
+    {"code": "action.question.batch", "name": "题库批量操作", "label": "题库管理", "kind": "action"},
+    {"code": "action.paper.manage", "name": "试卷维护", "label": "试卷管理", "kind": "action"},
+    {"code": "action.session.manage", "name": "场次维护", "label": "考试场次", "kind": "action"},
+    {"code": "action.exam.take", "name": "在线考试作答", "label": "可参加的考试", "kind": "action"},
 ]
 
 ALL_CODES: List[str] = [x["code"] for x in CATALOG]
@@ -207,6 +236,29 @@ def catalog_action_groups() -> List[dict[str, Any]]:
 # 功能点 code -> (module_key, module_title)，前缀自左向右优先匹配
 _MODULE_RULES: List[Tuple[str, str, str]] = [
     ("menu.home", "nav", "导航与入口"),
+    ("menu.exam.qb_center", "qb_center", "题库中心"),
+    ("menu.exam.question_manage", "qb_center", "题库中心"),
+    ("list.question", "qb_center", "题库中心"),
+    ("form.question", "qb_center", "题库中心"),
+    ("form.question_import", "qb_center", "题库中心"),
+    ("form.question_batch", "qb_center", "题库中心"),
+    ("field.question.", "qb_center", "题库中心"),
+    ("action.question.", "qb_center", "题库中心"),
+    ("module.exam.paper_archive", "paper_archive", "试卷档案"),
+    ("menu.exam.paper_manage", "paper_archive", "试卷档案"),
+    ("menu.exam.paper_publish", "paper_archive", "试卷档案"),
+    ("list.paper", "paper_archive", "试卷档案"),
+    ("form.paper", "paper_archive", "试卷档案"),
+    ("field.paper.", "paper_archive", "试卷档案"),
+    ("action.paper.", "paper_archive", "试卷档案"),
+    ("menu.exam.sessions", "sessions", "考试场次"),
+    ("list.session", "sessions", "考试场次"),
+    ("form.session", "sessions", "考试场次"),
+    ("field.session.", "sessions", "考试场次"),
+    ("action.session.", "sessions", "考试场次"),
+    ("menu.exam.available", "available", "可参加的考试"),
+    ("list.attempt", "available", "可参加的考试"),
+    ("action.exam.", "available", "可参加的考试"),
     ("menu.exam.", "exam", "考试业务"),
     ("menu.system.users", "sys_user", "系统管理-用户"),
     ("menu.system.roles", "sys_user", "系统管理-用户"),
@@ -239,14 +291,14 @@ _MODULE_RULES: List[Tuple[str, str, str]] = [
     ("action.enterprise.", "sys_base", "系统管理-基础信息"),
     ("action.course.", "sys_base", "系统管理-基础信息"),
     ("action.paper_level.", "sys_base", "系统管理-基础信息"),
-    ("action.question.", "exam", "考试业务"),
-    ("action.paper.", "exam", "考试业务"),
-    ("action.session.", "exam", "考试业务"),
-    ("action.exam.", "exam", "考试业务"),
 ]
 
 _FUNCTION_MODULE_ORDER = (
     "nav",
+    "qb_center",
+    "paper_archive",
+    "sessions",
+    "available",
     "exam",
     "sys_user",
     "sys_base",
@@ -267,7 +319,11 @@ def _module_for_code(code: str) -> Tuple[str, str]:
 def _entity_from_list_or_form(code: str) -> str | None:
     parts = code.split(".")
     if len(parts) >= 2 and parts[0] in ("list", "form"):
-        return parts[1]
+        ent = parts[1]
+        # 题库导入/批量操作沿用题库字段授权
+        if ent in ("question_import", "question_batch"):
+            return "question"
+        return ent
     return None
 
 
@@ -284,16 +340,23 @@ def catalog_function_module_tree() -> List[Dict[str, Any]]:
         kind = it.get("kind")
         if kind == "field":
             continue
+        if kind not in ("menu", "list", "form", "action", "module"):
+            continue
         mk, mt = _module_for_code(it["code"])
         if mk not in buckets:
             buckets[mk] = {
                 "moduleKey": mk,
                 "moduleTitle": mt,
+                "moduleCode": None,
                 "menus": [],
                 "lists": [],
                 "forms": [],
                 "actions": [],
             }
+        if kind == "module":
+            # 系统模块节点：用于授权树展示为模块标题，不计入菜单/列表/表单/操作
+            buckets[mk]["moduleCode"] = it["code"]
+            continue
         if kind == "menu":
             buckets[mk]["menus"].append(it)
         elif kind == "list":

@@ -21,78 +21,154 @@
       </p>
       <div class="tree-panel">
         <div v-for="mod in authModules" :key="mod.moduleKey" class="mod-block">
-          <div class="mod-title">{{ mod.moduleTitle }}</div>
+          <div class="mod-title">
+            <el-checkbox
+              v-if="mod.moduleCode"
+              :model-value="has(mod.moduleCode)"
+              class="mod-check"
+              @change="(v: boolean | string | number) => toggleCode(mod.moduleCode as string, !!v)"
+            >
+              {{ mod.moduleTitle }}
+            </el-checkbox>
+            <span v-else>{{ mod.moduleTitle }}</span>
+          </div>
 
           <template v-if="mod.menus.length">
-            <div class="kind-label">菜单</div>
-            <div v-for="m in mod.menus" :key="m.code" class="tree-line depth-1">
-              <el-checkbox :model-value="has(m.code)" @change="(v: boolean | string | number) => toggleCode(m.code, !!v)">
-                {{ m.name }}
-              </el-checkbox>
+            <div v-for="m in mod.menus" :key="m.code" class="menu-block">
+              <div class="tree-line depth-1 menu-line">
+                <el-checkbox :model-value="has(m.code)" @change="(v: boolean | string | number) => toggleCode(m.code, !!v)">
+                  {{ m.name }}
+                </el-checkbox>
+              </div>
+
+              <template v-if="formsForMenu(mod, m).length">
+                <div class="kind-label depth-2">表单</div>
+                <div v-for="row in formsForMenu(mod, m)" :key="'f-' + row.item.code" class="lf-wrap">
+                  <div class="tree-line depth-2 row-with-sub">
+                    <el-checkbox
+                      :model-value="has(row.item.code)"
+                      @change="(v: boolean | string | number) => onListFormCheck(row, 'form', !!v)"
+                    >
+                      {{ row.item.name }}
+                    </el-checkbox>
+                    <el-checkbox
+                      v-if="row.fields.length"
+                      v-model="includeSub[row.item.code]"
+                      class="sub-check"
+                      @change="() => onIncludeSubToggle(row)"
+                    >
+                      含下级
+                    </el-checkbox>
+                  </div>
+                  <div v-for="f in row.fields" :key="f.code" class="tree-line depth-3">
+                    <el-checkbox :model-value="has(f.code)" @change="(v: boolean | string | number) => toggleCode(f.code, !!v)">
+                      {{ f.name }}
+                    </el-checkbox>
+                  </div>
+                </div>
+              </template>
+
+              <template v-if="listsForMenu(mod, m).length">
+                <div class="kind-label depth-2">列表</div>
+                <div v-for="row in listsForMenu(mod, m)" :key="'l-' + row.item.code" class="lf-wrap">
+                  <div class="tree-line depth-2 row-with-sub">
+                    <el-checkbox
+                      :model-value="has(row.item.code)"
+                      @change="(v: boolean | string | number) => onListFormCheck(row, 'list', !!v)"
+                    >
+                      {{ row.item.name }}
+                    </el-checkbox>
+                    <el-checkbox
+                      v-if="row.fields.length"
+                      v-model="includeSub[row.item.code]"
+                      class="sub-check"
+                      @change="() => onIncludeSubToggle(row)"
+                    >
+                      含下级
+                    </el-checkbox>
+                  </div>
+                  <div v-for="f in row.fields" :key="f.code" class="tree-line depth-3">
+                    <el-checkbox :model-value="has(f.code)" @change="(v: boolean | string | number) => toggleCode(f.code, !!v)">
+                      {{ f.name }}
+                    </el-checkbox>
+                  </div>
+                </div>
+              </template>
+
+              <template v-if="actionsForMenu(mod, m).length">
+                <div class="kind-label depth-2">操作</div>
+                <div v-for="a in actionsForMenu(mod, m)" :key="a.code" class="tree-line depth-2">
+                  <el-checkbox :model-value="has(a.code)" @change="(v: boolean | string | number) => toggleCode(a.code, !!v)">
+                    {{ a.name }}
+                  </el-checkbox>
+                </div>
+              </template>
             </div>
           </template>
 
-          <template v-if="mod.forms.length">
-            <div class="kind-label">表单</div>
-            <div v-for="row in mod.forms" :key="'f-' + row.item.code" class="lf-wrap">
-              <div class="tree-line depth-1 row-with-sub">
-                <el-checkbox
-                  :model-value="has(row.item.code)"
-                  @change="(v: boolean | string | number) => onListFormCheck(row, 'form', !!v)"
-                >
-                  {{ row.item.name }}
-                </el-checkbox>
-                <el-checkbox
-                  v-if="row.fields.length"
-                  v-model="includeSub[row.item.code]"
-                  class="sub-check"
-                  @change="() => onIncludeSubToggle(row)"
-                >
-                  含下级
-                </el-checkbox>
+          <template v-else>
+            <template v-if="mod.forms.length">
+              <div class="kind-label">表单</div>
+              <div v-for="row in mod.forms" :key="'f-' + row.item.code" class="lf-wrap">
+                <div class="tree-line depth-1 row-with-sub">
+                  <el-checkbox
+                    :model-value="has(row.item.code)"
+                    @change="(v: boolean | string | number) => onListFormCheck(row, 'form', !!v)"
+                  >
+                    {{ row.item.name }}
+                  </el-checkbox>
+                  <el-checkbox
+                    v-if="row.fields.length"
+                    v-model="includeSub[row.item.code]"
+                    class="sub-check"
+                    @change="() => onIncludeSubToggle(row)"
+                  >
+                    含下级
+                  </el-checkbox>
+                </div>
+                <div v-for="f in row.fields" :key="f.code" class="tree-line depth-2">
+                  <el-checkbox :model-value="has(f.code)" @change="(v: boolean | string | number) => toggleCode(f.code, !!v)">
+                    {{ f.name }}
+                  </el-checkbox>
+                </div>
               </div>
-              <div v-for="f in row.fields" :key="f.code" class="tree-line depth-2">
-                <el-checkbox :model-value="has(f.code)" @change="(v: boolean | string | number) => toggleCode(f.code, !!v)">
-                  {{ f.name }}
-                </el-checkbox>
-              </div>
-            </div>
-          </template>
+            </template>
 
-          <template v-if="mod.lists.length">
-            <div class="kind-label">列表</div>
-            <div v-for="row in mod.lists" :key="'l-' + row.item.code" class="lf-wrap">
-              <div class="tree-line depth-1 row-with-sub">
-                <el-checkbox
-                  :model-value="has(row.item.code)"
-                  @change="(v: boolean | string | number) => onListFormCheck(row, 'list', !!v)"
-                >
-                  {{ row.item.name }}
-                </el-checkbox>
-                <el-checkbox
-                  v-if="row.fields.length"
-                  v-model="includeSub[row.item.code]"
-                  class="sub-check"
-                  @change="() => onIncludeSubToggle(row)"
-                >
-                  含下级
-                </el-checkbox>
+            <template v-if="mod.lists.length">
+              <div class="kind-label">列表</div>
+              <div v-for="row in mod.lists" :key="'l-' + row.item.code" class="lf-wrap">
+                <div class="tree-line depth-1 row-with-sub">
+                  <el-checkbox
+                    :model-value="has(row.item.code)"
+                    @change="(v: boolean | string | number) => onListFormCheck(row, 'list', !!v)"
+                  >
+                    {{ row.item.name }}
+                  </el-checkbox>
+                  <el-checkbox
+                    v-if="row.fields.length"
+                    v-model="includeSub[row.item.code]"
+                    class="sub-check"
+                    @change="() => onIncludeSubToggle(row)"
+                  >
+                    含下级
+                  </el-checkbox>
+                </div>
+                <div v-for="f in row.fields" :key="f.code" class="tree-line depth-2">
+                  <el-checkbox :model-value="has(f.code)" @change="(v: boolean | string | number) => toggleCode(f.code, !!v)">
+                    {{ f.name }}
+                  </el-checkbox>
+                </div>
               </div>
-              <div v-for="f in row.fields" :key="f.code" class="tree-line depth-2">
-                <el-checkbox :model-value="has(f.code)" @change="(v: boolean | string | number) => toggleCode(f.code, !!v)">
-                  {{ f.name }}
-                </el-checkbox>
-              </div>
-            </div>
-          </template>
+            </template>
 
-          <template v-if="mod.actions.length">
-            <div class="kind-label">操作</div>
-            <div v-for="a in mod.actions" :key="a.code" class="tree-line depth-1">
-              <el-checkbox :model-value="has(a.code)" @change="(v: boolean | string | number) => toggleCode(a.code, !!v)">
-                {{ a.name }}
-              </el-checkbox>
-            </div>
+            <template v-if="mod.actions.length">
+              <div class="kind-label">操作</div>
+              <div v-for="a in mod.actions" :key="a.code" class="tree-line depth-1">
+                <el-checkbox :model-value="has(a.code)" @change="(v: boolean | string | number) => toggleCode(a.code, !!v)">
+                  {{ a.name }}
+                </el-checkbox>
+              </div>
+            </template>
           </template>
         </div>
       </div>
@@ -127,6 +203,18 @@ const authModules = ref<AuthModulePayload[]>([]);
 const selectedList = ref<string[]>([]);
 const includeSub = reactive<Record<string, boolean>>({});
 const loadedRoleId = ref<number | null>(null);
+
+function formsForMenu(mod: AuthModulePayload, m: CatalogItem) {
+  return mod.forms.filter((row) => row.item.label === m.name);
+}
+
+function listsForMenu(mod: AuthModulePayload, m: CatalogItem) {
+  return mod.lists.filter((row) => row.item.label === m.name);
+}
+
+function actionsForMenu(mod: AuthModulePayload, m: CatalogItem) {
+  return mod.actions.filter((a) => a.label === m.name);
+}
 
 function closePage() {
   // 关闭：返回角色列表；页面被 keep-alive 缓存，未主动清空表单/勾选
@@ -291,11 +379,24 @@ onActivated(() => {
   margin-bottom: 10px;
   font-size: 15px;
 }
+.mod-check :deep(.el-checkbox__label) {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 15px;
+}
+.menu-line {
+  font-weight: 600;
+  color: #1e293b;
+}
 .kind-label {
   font-size: 12px;
   color: #94a3b8;
   margin: 8px 0 4px;
   padding-left: 4px;
+}
+.kind-label.depth-2 {
+  padding-left: 36px;
+  margin-top: 6px;
 }
 .tree-line {
   padding: 4px 0 4px 8px;
@@ -316,6 +417,11 @@ onActivated(() => {
   padding-left: 36px;
   border-left: 2px solid #e2e8f0;
   margin-left: 10px;
+}
+.depth-3 {
+  padding-left: 60px;
+  border-left: 2px solid #e2e8f0;
+  margin-left: 20px;
 }
 .lf-wrap {
   margin-bottom: 8px;

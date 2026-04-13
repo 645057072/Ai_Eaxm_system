@@ -24,6 +24,7 @@ export type CatalogMlfModule = {
 export type AuthModulePayload = {
   moduleKey: string;
   moduleTitle: string;
+  moduleCode?: string | null;
   menus: CatalogItem[];
   lists: { item: CatalogItem; fields: CatalogItem[] }[];
   forms: { item: CatalogItem; fields: CatalogItem[] }[];
