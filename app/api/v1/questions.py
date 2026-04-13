@@ -3,7 +3,7 @@
 import logging
 from collections import Counter
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import func, select
@@ -34,7 +34,7 @@ from app.services.question_number import allocate_question_no
 from app.services.question_dedup import compute_question_dedup_hash, find_duplicate_question_id
 from app.services.question_import import (
     build_image_placeholder,
-    build_questions_from_text,
+    build_questions_from_uploaded_texts,
     extract_plain_text,
 )
 
@@ -183,9 +183,13 @@ async def import_questions(
     current: Annotated[User, Depends(require_permission("action.question.import"))],
     course_id: Annotated[int, Form()],
     enterprise_id: Annotated[int, Form()],
-    file: UploadFile = File(...),
+    files: Annotated[
+        List[UploadFile] | None,
+        File(description="可同时选择多个文件，表单字段名 files，按题号与答案册自动合并"),
+    ] = None,
+    file: Annotated[UploadFile | None, File(description="兼容单文件，字段名 file")] = None,
 ) -> QuestionImportResult:
-    """导入题库：解析文件并写入草稿题目。"""
+    """导入题库：支持多文件；题干与「【参考答案】/【试题解析】」分册时按题号拼接后写入草稿。"""
     course = db.get(Course, course_id)
     if course is None:
         raise HTTPException(status_code=404, detail="课程不存在")
@@ -197,16 +201,36 @@ async def import_questions(
     if not is_super_role(current):
         if current.enterprise_id is None or current.enterprise_id != enterprise_id:
             raise HTTPException(status_code=403, detail="无权导入到该企业")
-    raw = await file.read()
-    if len(raw) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="文件超过 20MB")
-    fn = file.filename or "upload"
-    ext = (fn.rsplit(".", 1)[-1] if "." in fn else "").lower()
+    upload_list: List[UploadFile] = []
+    if files:
+        upload_list.extend(files)
+    if file is not None and (file.filename or "").strip():
+        upload_list.append(file)
+    if not upload_list:
+        raise HTTPException(status_code=400, detail="请上传至少一个文件")
     image_ext = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
+    per_file_max = 20 * 1024 * 1024
+    total_max = 60 * 1024 * 1024
     try:
-        if ext in image_ext:
-            items = [build_image_placeholder(fn)]
-        else:
+        raw_entries: list[tuple[str, bytes]] = []
+        total_bytes = 0
+        for uf in upload_list:
+            raw = await uf.read()
+            if len(raw) > per_file_max:
+                raise HTTPException(status_code=400, detail=f"单个文件超过 20MB：{uf.filename or 'upload'}")
+            total_bytes += len(raw)
+            raw_entries.append((uf.filename or "upload", raw))
+        if total_bytes > total_max:
+            raise HTTPException(status_code=400, detail="多文件合计超过 60MB，请分批导入")
+        text_sources: list[tuple[str, str]] = []
+        image_items: list[dict] = []
+        file_labels: list[str] = []
+        for fn, raw in raw_entries:
+            file_labels.append(fn)
+            ext = (fn.rsplit(".", 1)[-1] if "." in fn else "").lower()
+            if ext in image_ext:
+                image_items.append(build_image_placeholder(fn))
+                continue
             try:
                 text = extract_plain_text(fn, raw)
             except ValueError as e:
@@ -222,21 +246,30 @@ async def import_questions(
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"读取或解析文件失败：{e!s}") from e
             if not text.strip():
-                items = [build_image_placeholder(fn)]
+                image_items.append(build_image_placeholder(fn))
             else:
-                try:
-                    items = build_questions_from_text(text)
-                except Exception as e:
-                    raise HTTPException(status_code=400, detail=f"题目文本切分失败：{e!s}") from e
+                text_sources.append((fn, text))
+        merge_logs: list[str] = []
+        if text_sources:
+            try:
+                parsed_items, merge_logs = build_questions_from_uploaded_texts(text_sources)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"题目文本合并失败：{e!s}") from e
+        else:
+            parsed_items = []
+        items = [*image_items, *parsed_items]
         if not items:
             raise HTTPException(status_code=400, detail="未能从文件中解析出题目")
         _qtype_cn = {"single": "单选", "multiple": "多选", "judge": "判断", "fill": "填空"}
         log_lines: list[str] = [
             f"导入时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"文件：{fn}",
+            f"文件数：{len(upload_list)} 名称：{', '.join(file_labels)}",
             f"企业ID：{enterprise_id} 课程ID：{course_id}",
             "",
         ]
+        if merge_logs:
+            log_lines.extend(merge_logs)
+            log_lines.append("")
         created = 0
         skipped_duplicate = 0
         failed = 0

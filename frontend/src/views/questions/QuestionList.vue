@@ -230,7 +230,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="importDlg" title="导入题库" width="520px" @closed="resetImport">
+    <el-dialog v-model="importDlg" title="导入题库" width="560px" @closed="resetImport">
       <el-form label-width="100px">
         <el-form-item label="所属企业" required>
           <el-select
@@ -272,10 +272,15 @@
           <input
             ref="fileInputRef"
             type="file"
+            multiple
             accept=".doc,.docx,.xls,.xlsx,.pdf,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp,.bmp"
-            @change="onImportFile"
+            @change="onImportFiles"
           />
-          <p class="hint-text">支持 Word、Excel、PDF、图片、txt、CSV 等格式。</p>
+          <p class="hint-text">
+            支持多选：可同时上传「题干+选项」与「参考答案+试题解析」等文件；题干请带题号（如 169.），答案册使用「数字.【参考答案】」与「【试题解析】」，系统按题号自动合并。支持
+            Word、Excel、PDF、图片、txt、CSV。
+          </p>
+          <p v-if="importFiles.length" class="hint-text">已选 {{ importFiles.length }} 个文件</p>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -390,7 +395,7 @@ const form = reactive({
 const importDlg = ref(false);
 const importEnterpriseId = ref<number | undefined>();
 const importCourseId = ref<number | undefined>();
-const importFile = ref<File | null>(null);
+const importFiles = ref<File[]>([]);
 const importLoading = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
@@ -755,7 +760,7 @@ function downloadImportLog() {
 async function openImport() {
   importEnterpriseId.value = auth.me?.enterprise_id ?? undefined;
   importCourseId.value = undefined;
-  importFile.value = null;
+  importFiles.value = [];
   if (fileInputRef.value) fileInputRef.value.value = "";
   importDlg.value = true;
   await remoteImportEnterprises("");
@@ -768,19 +773,18 @@ async function openImport() {
 }
 
 function resetImport() {
-  importFile.value = null;
+  importFiles.value = [];
   if (fileInputRef.value) fileInputRef.value.value = "";
 }
 
-function onImportFile(ev: Event) {
+function onImportFiles(ev: Event) {
   const t = ev.target as HTMLInputElement;
-  const f = t.files?.[0];
-  importFile.value = f ?? null;
+  importFiles.value = t.files?.length ? Array.from(t.files) : [];
 }
 
 async function submitImport() {
-  if (!importCourseId.value || !importEnterpriseId.value || !importFile.value) {
-    ElMessage.warning("请选择所属企业、所属课程与导入文件");
+  if (!importCourseId.value || !importEnterpriseId.value || !importFiles.value.length) {
+    ElMessage.warning("请选择所属企业、所属课程，并至少选择一个文件");
     return;
   }
   importLoading.value = true;
@@ -788,7 +792,9 @@ async function submitImport() {
     const fd = new FormData();
     fd.append("course_id", String(importCourseId.value));
     fd.append("enterprise_id", String(importEnterpriseId.value));
-    fd.append("file", importFile.value);
+    for (const f of importFiles.value) {
+      fd.append("files", f);
+    }
     const { data } = await importQuestions(fd);
     const d = data as {
       message?: string;

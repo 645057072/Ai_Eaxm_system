@@ -452,23 +452,196 @@ def finalize_import_item(item: Dict[str, Any]) -> Dict[str, Any]:
     return item
 
 
-def build_questions_from_text(text: str) -> List[Dict[str, Any]]:
+def _parse_leading_question_number(block: str) -> Tuple[Optional[int], str]:
+    """从块首提取题号（如 169. / 169、），便于多文件与答案册按编号对齐。"""
+    b = block.lstrip()
+    m = re.match(r"^(\d{1,4})[\.\．、）)]\s*", b)
+    if not m:
+        return None, block
+    return int(m.group(1)), block
+
+
+def _normalize_key_answer_line(s: str) -> str:
+    s = (s or "").strip()
+    if not s:
+        return s
+    trans = str.maketrans(
+        "\uff21\uff22\uff23\uff24\uff25\uff41\uff42\uff43\uff44\uff45",
+        "ABCDEabcde",
+    )
+    return s.translate(trans)
+
+
+def _qtype_hint_from_answer_key(raw: str) -> str:
+    """根据参考答案字母个数推断单选/多选；无字母时退回单选。"""
+    u = re.sub(r"[\s,，;；]+", "", (raw or "").upper())
+    keys = re.findall(r"[A-E]", u)
+    if len(keys) > 1:
+        return "multiple"
+    return "single"
+
+
+def _default_options_json_for_qtype(q_type: str) -> Any:
+    if q_type == "judge":
+        return [{"key": "T", "text": "正确"}, {"key": "F", "text": "错误"}]
+    if q_type == "fill":
+        return None
+    return [
+        {"key": "A", "text": "选项A"},
+        {"key": "B", "text": "选项B"},
+        {"key": "C", "text": "选项C"},
+        {"key": "D", "text": "选项D"},
+    ]
+
+
+def _crop_analysis_after_key_tag(raw: str) -> str:
+    """答案册中【试题解析】正文截断到下一题「数字.【参考答案】」之前。"""
+    if not raw:
+        return ""
+    m = re.search(r"(?m)(?=^\d+\.\s*【参考答案】)", raw)
+    if m:
+        raw = raw[: m.start()]
+    return raw.strip()
+
+
+def parse_answer_key_file(text: str) -> Dict[int, Dict[str, Optional[str]]]:
+    """解析单独答案册：「167. 【参考答案】 D」+「【试题解析】…」按题号索引。"""
+    t = _normalize_import_text(text).strip()
+    out: Dict[int, Dict[str, Optional[str]]] = {}
+    if not t:
+        return out
+    for m in re.finditer(
+        r"(?ms)^(\d+)\.\s*【参考答案】\s*([^\n\r]+?)(?:\s*\n\s*【试题解析】\s*([\s\S]*?))?(?=\n\s*\d+\.\s*【参考答案】|\Z)",
+        t,
+    ):
+        num = int(m.group(1))
+        ans_line = _normalize_key_answer_line(m.group(2))
+        ans_body = re.sub(r"[\s　]+", "", ans_line).upper()
+        an_raw = m.group(3)
+        analysis: Optional[str] = None
+        if an_raw is not None:
+            body = _crop_analysis_after_key_tag(an_raw.strip())
+            analysis = _truncate_analysis(body)
+        out[num] = {"answer_raw": ans_body, "analysis": analysis}
+    return out
+
+
+def _looks_like_answer_key_file(text: str) -> bool:
+    """是否为「仅参考答案+解析」类文件；与整卷含大量选项的混排区分。"""
+    if not re.search(r"(?m)\d+\.\s*【参考答案】", text or ""):
+        return False
+    ref_cnt = len(re.findall(r"(?m)\d+\.\s*【参考答案】", text))
+    opt_cnt = len(re.findall(r"(?m)^\s*[A-Ea-e][\.．、:：]\s*\S", text))
+    if opt_cnt >= max(ref_cnt * 3, 15) and ref_cnt <= max(opt_cnt // 4, 8):
+        return False
+    return True
+
+
+def _merge_parsed_items_for_num(store: Dict[int, Dict[str, Any]], num: int, item: Dict[str, Any]) -> None:
+    """同一题号多份题干文件合并：取长题干与选项；解析/答案以非空补缺。"""
+    if num not in store:
+        store[num] = {**item}
+        return
+    o = store[num]
+    if len((item.get("stem") or "")) > len((o.get("stem") or "")):
+        o["stem"] = item["stem"]
+        o["options_json"] = item.get("options_json")
+        o["q_type"] = item.get("q_type") or o.get("q_type")
+    if not (o.get("analysis") or "").strip() and (item.get("analysis") or "").strip():
+        o["analysis"] = item["analysis"]
+
+
+def _apply_answer_key_to_item(item: Dict[str, Any], ad: Dict[str, Optional[str]]) -> Dict[str, Any]:
+    """将答案册中的答案、解析写入已解析题目（可按字母数修正多选）。"""
+    raw = (ad.get("answer_raw") or "").strip()
+    if not raw:
+        if ad.get("analysis"):
+            item["analysis"] = normalize_analysis(str(ad["analysis"]))
+        return item
+    qt = str(item.get("q_type") or "single")
+    inferred = _qtype_hint_from_answer_key(raw)
+    if inferred == "multiple" and qt == "single":
+        item["q_type"] = "multiple"
+        qt = "multiple"
+    item["answer_json"] = _parse_answer_to_json(raw, qt)
+    if ad.get("analysis"):
+        item["analysis"] = normalize_analysis(str(ad["analysis"]))
+    return item
+
+
+def build_question_items_from_text(text: str) -> List[Tuple[Optional[int], Dict[str, Any]]]:
+    """解析题目文件，返回 (题号或 None, 题目字典) 列表。"""
     t = _normalize_import_text(text)
     blocks = _split_blocks(t)
-    out: List[Dict[str, Any]] = []
+    out: List[Tuple[Optional[int], Dict[str, Any]]] = []
     section: Optional[str] = None
     for b in blocks:
-        b2, section = _extract_sections_from_block(b, section)
+        num, b0 = _parse_leading_question_number(b)
+        b2, section = _extract_sections_from_block(b0, section)
         if not b2.strip():
             continue
         try:
             item = parse_question_block(b2, section_hint=section)
             if item:
-                out.append(finalize_import_item(item))
+                out.append((num, finalize_import_item(item)))
         except Exception:
-            # 单块解析异常不拖垮整份文件
             continue
     return out
+
+
+def build_questions_from_uploaded_texts(sources: List[Tuple[str, str]]) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """多文件合并：题干类文件按题号合并；含「【参考答案】」的册子按题号对齐答案与解析。"""
+    logs: List[str] = []
+    by_num: Dict[int, Dict[str, Any]] = {}
+    answers_by_num: Dict[int, Dict[str, Optional[str]]] = {}
+    unnumbered: List[Dict[str, Any]] = []
+
+    for fn, text in sources:
+        label = fn or "upload"
+        if not (text or "").strip():
+            logs.append(f"[跳过] {label}：无文本内容")
+            continue
+        if _looks_like_answer_key_file(text):
+            amap = parse_answer_key_file(text)
+            logs.append(f"[解析] {label}：答案/解析册，题号条目 {len(amap)}")
+            for k, v in amap.items():
+                answers_by_num[k] = v
+            continue
+        pairs = build_question_items_from_text(text)
+        logs.append(f"[解析] {label}：题目块 {len(pairs)}")
+        for num, item in pairs:
+            if num is None:
+                unnumbered.append(item)
+            else:
+                _merge_parsed_items_for_num(by_num, num, item)
+
+    for num in sorted(by_num.keys()):
+        if num in answers_by_num:
+            by_num[num] = finalize_import_item(_apply_answer_key_to_item(by_num[num], answers_by_num[num]))
+
+    only_ans = set(answers_by_num.keys()) - set(by_num.keys())
+    for num in sorted(only_ans):
+        ad = answers_by_num[num]
+        qt = _qtype_hint_from_answer_key(ad.get("answer_raw") or "")
+        stub = {
+            "q_type": qt,
+            "stem": _truncate_stem(f"【题号{num}】题干未在本次上传文件中解析到，请手动编辑"),
+            "options_json": _default_options_json_for_qtype(qt),
+            "answer_json": _parse_answer_to_json(ad.get("answer_raw") or "", qt),
+            "analysis": ad.get("analysis"),
+        }
+        by_num[num] = finalize_import_item(stub)
+        logs.append(f"[补缺] 题号 {num}：仅有答案/解析，已生成题干占位")
+
+    ordered_nums = sorted(by_num.keys())
+    out: List[Dict[str, Any]] = [by_num[n] for n in ordered_nums]
+    out.extend(unnumbered)
+    return out, logs
+
+
+def build_questions_from_text(text: str) -> List[Dict[str, Any]]:
+    pairs = build_question_items_from_text(text)
+    return [p[1] for p in pairs]
 
 
 def build_image_placeholder(filename: str) -> Dict[str, Any]:

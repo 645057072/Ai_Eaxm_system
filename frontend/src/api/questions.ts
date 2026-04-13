@@ -40,7 +40,7 @@ export function batchUpdateQuestionDifficulty(ids: number[], difficulty: number)
   return http.post("/v1/questions/batch-difficulty", { ids, difficulty });
 }
 
-/** 导入题库（multipart：course_id、enterprise_id、file） */
+/** 导入题库（multipart：course_id、enterprise_id、可多个 files） */
 export function importQuestions(formData: FormData) {
   return http.post("/v1/questions/import", formData, {
     headers: { "Content-Type": "multipart/form-data" },
