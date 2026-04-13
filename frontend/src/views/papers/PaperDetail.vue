@@ -6,6 +6,11 @@
         <el-button @click="$router.back()"><AppEmoji name="back" size="sm" decorative />返回</el-button>
       </div>
     </template>
+    <p class="meta">
+      试卷编号：{{ paper?.paper_no || "—" }}；课程：{{ paper?.course_name || "—" }}；类型：{{ paper?.paper_type || "—" }}；等级：{{
+        paper?.level_name || "—"
+      }}
+    </p>
     <p>时长：{{ paper?.duration_minutes }} 分钟，总分：{{ paper?.total_score }}</p>
     <div class="toolbar">
       <el-input-number v-model="addQid" :min="1" placeholder="题目ID" />
@@ -16,6 +21,7 @@
     <el-table :data="paper?.items || []">
       <el-table-column prop="sort_order" label="序" width="70" />
       <el-table-column prop="score" label="分值" width="90" />
+      <el-table-column prop="auto_split_count" label="拆分" width="80" />
       <el-table-column prop="question_id" label="题目ID" width="90" />
       <el-table-column label="题干" show-overflow-tooltip>
         <template #default="{ row }">{{ row.question?.stem }}</template>

@@ -11,6 +11,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.course import Course
+    from app.models.paper_level import PaperLevel
     from app.models.user import User
     from app.models.question import Question
 
@@ -22,6 +24,11 @@ class ExamPaper(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(200))
+    paper_no: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True, comment="试卷编号")
+    course_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sys_course.id"), index=True, comment="关联课程")
+    paper_type: Mapped[str] = mapped_column(String(32), default="formal", index=True, comment="试卷类型")
+    level_id: Mapped[Optional[int]] = mapped_column(ForeignKey("paper_level.id"), index=True, comment="试卷等级")
+    composition_rules: Mapped[Optional[Any]] = mapped_column(JSON, comment="组卷规则快照")
     description: Mapped[Optional[str]] = mapped_column(Text)
     duration_minutes: Mapped[int] = mapped_column(Integer, default=60, comment="考试时长分钟")
     total_score: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("100.00"))
@@ -34,6 +41,8 @@ class ExamPaper(Base):
     creator: Mapped[Optional["User"]] = relationship(
         back_populates="papers_created", foreign_keys=[created_by]
     )
+    course: Mapped[Optional["Course"]] = relationship("Course", foreign_keys=[course_id])
+    paper_level: Mapped[Optional["PaperLevel"]] = relationship("PaperLevel", foreign_keys=[level_id])
     items: Mapped[List["ExamPaperItem"]] = relationship(
         back_populates="paper", order_by="ExamPaperItem.sort_order", cascade="all, delete-orphan"
     )
@@ -51,6 +60,7 @@ class ExamPaperItem(Base):
     question_id: Mapped[int] = mapped_column(ForeignKey("qb_question.id", ondelete="CASCADE"), index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     score: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("1.00"))
+    auto_split_count: Mapped[int] = mapped_column(Integer, default=1, comment="自动拆分题目数量")
 
     paper: Mapped["ExamPaper"] = relationship(back_populates="items")
     question: Mapped["Question"] = relationship(back_populates="paper_items")

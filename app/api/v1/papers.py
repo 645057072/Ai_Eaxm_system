@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """试卷：组卷与题目项维护。"""
 
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Annotated
 
@@ -9,19 +10,47 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_db, require_any_permission, require_permission
+from app.core.permissions import is_super_role
+from app.models.course import Course
 from app.models.exam import ExamPaper, ExamPaperItem
-from app.models.question import Question
+from app.models.paper_level import PaperLevel
 from app.models.user import User
 from app.schemas.common import PageParams, PageResult
-from app.schemas.paper import PaperCreate, PaperItemAdd, PaperItemOut, PaperOut, PaperSummary, PaperUpdate
+from app.schemas.paper import (
+    PaperCreate,
+    PaperItemAdd,
+    PaperItemOut,
+    PaperOut,
+    PaperSummary,
+    PaperUpdate,
+)
 from app.schemas.question import QuestionOut
 from app.services.data_scope import (
     assert_paper_in_enterprise,
     assert_question_in_enterprise,
+    ensure_same_enterprise,
     restrict_query_by_creator_enterprise,
 )
+from app.services.paper_compose import fetch_question_pool_ids, pick_questions_for_rule, rules_to_jsonable
 
 router = APIRouter()
+
+
+def _gen_paper_no(db: Session, enterprise_id: int | None) -> str:
+    """同一企业按日递增生成试卷编号。"""
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    ent = int(enterprise_id) if enterprise_id is not None else 0
+    prefix = f"SJ{today}-E{ent}-"
+    like = f"{prefix}%"
+    n = (
+        db.scalar(
+            select(func.count())
+            .select_from(ExamPaper)
+            .where(ExamPaper.paper_no.is_not(None), ExamPaper.paper_no.like(like))
+        )
+        or 0
+    )
+    return f"{prefix}{n + 1:04d}"
 
 
 def _recalc_total_score(db: Session, paper_id: int) -> None:
@@ -32,6 +61,25 @@ def _recalc_total_score(db: Session, paper_id: int) -> None:
     if paper:
         paper.total_score = Decimal(str(s or 0))
         db.add(paper)
+
+
+def _paper_summary(p: ExamPaper) -> PaperSummary:
+    return PaperSummary(
+        id=p.id,
+        title=p.title,
+        paper_no=p.paper_no,
+        course_id=p.course_id,
+        course_name=p.course.name if p.course else None,
+        paper_type=p.paper_type or "formal",
+        level_id=p.level_id,
+        level_name=p.paper_level.level_name if p.paper_level else None,
+        description=p.description,
+        duration_minutes=p.duration_minutes,
+        total_score=p.total_score,
+        created_by=p.created_by,
+        created_at=p.created_at,
+        updated_at=p.updated_at,
+    )
 
 
 @router.get("", response_model=PageResult[PaperSummary])
@@ -49,11 +97,12 @@ def list_papers(
             select(ExamPaper).join(User, ExamPaper.created_by == User.id),
             current,
         )
+        .options(joinedload(ExamPaper.course), joinedload(ExamPaper.paper_level))
         .offset(page.skip)
         .limit(page.limit)
         .order_by(ExamPaper.id.desc())
     ).all()
-    return PageResult[PaperSummary](total=int(total), items=[PaperSummary.model_validate(r) for r in rows])
+    return PageResult[PaperSummary](total=int(total), items=[_paper_summary(r) for r in rows])
 
 
 @router.post("", response_model=PaperOut)
@@ -62,18 +111,81 @@ def create_paper(
     db: Annotated[Session, Depends(get_db)],
     current: Annotated[User, Depends(require_permission("action.paper.manage"))],
 ) -> PaperOut:
-    """新建试卷。"""
+    """新建试卷；可带组卷规则从课程题库随机抽题。"""
+    course: Course | None = None
+    if body.course_id is not None:
+        course = db.get(Course, body.course_id)
+        if course is None:
+            raise HTTPException(status_code=404, detail="课程不存在")
+        if not is_super_role(current):
+            ensure_same_enterprise(current, course.enterprise_id)
+
+    if body.rules and body.course_id is None:
+        raise HTTPException(status_code=400, detail="配置了组卷规则时必须指定关联课程")
+
+    if body.level_id is not None:
+        pl = db.get(PaperLevel, body.level_id)
+        if pl is None:
+            raise HTTPException(status_code=404, detail="试卷等级不存在")
+        if not is_super_role(current):
+            ensure_same_enterprise(current, pl.enterprise_id)
+        if course is not None and pl.enterprise_id != course.enterprise_id:
+            raise HTTPException(status_code=400, detail="试卷等级与课程须属同一企业")
+
+    pn = (body.paper_no or "").strip() or None
+    if pn:
+        dup = db.scalar(select(func.count()).select_from(ExamPaper).where(ExamPaper.paper_no == pn)) or 0
+        if dup:
+            raise HTTPException(status_code=400, detail="试卷编号已存在")
+    else:
+        ent_for_no = course.enterprise_id if course is not None else current.enterprise_id
+        pn = _gen_paper_no(db, ent_for_no)
+
+    composition_rules = None
+    items_spec: list[tuple[int, Decimal, int]] = []
+    if body.rules:
+        assert course is not None
+        ent_pool = course.enterprise_id
+        used: set[int] = set()
+        for rule in body.rules:
+            pool = fetch_question_pool_ids(db, course_id=course.id, enterprise_id=ent_pool, q_type=rule.q_type)
+            picked = pick_questions_for_rule(
+                pool, use_all=rule.use_all, count=rule.count, already_used=used
+            )
+            used.update(picked)
+            for qid in picked:
+                items_spec.append((qid, rule.score_per, rule.auto_split))
+        composition_rules = rules_to_jsonable(body.rules)
+
     p = ExamPaper(
-        title=body.title,
+        title=body.title.strip(),
+        paper_no=pn,
+        course_id=body.course_id,
+        paper_type=(body.paper_type or "formal").strip(),
+        level_id=body.level_id,
+        composition_rules=composition_rules,
         description=body.description,
         duration_minutes=body.duration_minutes,
         total_score=Decimal("0"),
         created_by=current.id,
     )
     db.add(p)
+    db.flush()
+    for idx, (qid, score, auto_split) in enumerate(items_spec):
+        db.add(
+            ExamPaperItem(
+                paper_id=p.id,
+                question_id=qid,
+                sort_order=idx,
+                score=score,
+                auto_split_count=auto_split,
+            )
+        )
     db.commit()
-    db.refresh(p)
-    return PaperOut.model_validate(p)
+    if items_spec:
+        _recalc_total_score(db, p.id)
+        db.commit()
+    return get_paper(p.id, db, current)
 
 
 def _build_paper_out(p: ExamPaper) -> PaperOut:
@@ -86,12 +198,20 @@ def _build_paper_out(p: ExamPaper) -> PaperOut:
                 question_id=it.question_id,
                 sort_order=it.sort_order,
                 score=it.score,
+                auto_split_count=it.auto_split_count,
                 question=QuestionOut.model_validate(q) if q else None,
             )
         )
     return PaperOut(
         id=p.id,
         title=p.title,
+        paper_no=p.paper_no,
+        course_id=p.course_id,
+        course_name=p.course.name if p.course else None,
+        paper_type=p.paper_type or "formal",
+        level_id=p.level_id,
+        level_name=p.paper_level.level_name if p.paper_level else None,
+        composition_rules=p.composition_rules,
         description=p.description,
         duration_minutes=p.duration_minutes,
         total_score=p.total_score,
@@ -115,7 +235,11 @@ def get_paper(
     assert_paper_in_enterprise(db, current, paper_id)
     p = db.scalars(
         select(ExamPaper)
-        .options(joinedload(ExamPaper.items).joinedload(ExamPaperItem.question))
+        .options(
+            joinedload(ExamPaper.items).joinedload(ExamPaperItem.question),
+            joinedload(ExamPaper.course),
+            joinedload(ExamPaper.paper_level),
+        )
         .where(ExamPaper.id == paper_id)
     ).first()
     if p is None:
@@ -132,11 +256,41 @@ def update_paper(
 ) -> PaperOut:
     p = assert_paper_in_enterprise(db, current, paper_id)
     data = body.model_dump(exclude_unset=True)
+    if "paper_no" in data and data["paper_no"] is not None:
+        pn = str(data["paper_no"]).strip()
+        dup = (
+            db.scalar(
+                select(func.count())
+                .select_from(ExamPaper)
+                .where(ExamPaper.paper_no == pn, ExamPaper.id != paper_id)
+            )
+            or 0
+        )
+        if dup:
+            raise HTTPException(status_code=400, detail="试卷编号已存在")
+        data["paper_no"] = pn or None
+    if "course_id" in data and data["course_id"] is not None:
+        c = db.get(Course, data["course_id"])
+        if c is None:
+            raise HTTPException(status_code=404, detail="课程不存在")
+        if not is_super_role(current):
+            ensure_same_enterprise(current, c.enterprise_id)
+    if "level_id" in data and data["level_id"] is not None:
+        pl = db.get(PaperLevel, data["level_id"])
+        if pl is None:
+            raise HTTPException(status_code=404, detail="试卷等级不存在")
+        if not is_super_role(current):
+            ensure_same_enterprise(current, pl.enterprise_id)
+        cid = data.get("course_id", p.course_id)
+        if cid is not None:
+            c2 = db.get(Course, cid)
+            if c2 and pl.enterprise_id != c2.enterprise_id:
+                raise HTTPException(status_code=400, detail="试卷等级与课程须属同一企业")
     for k, v in data.items():
         setattr(p, k, v)
     db.commit()
     db.refresh(p)
-    return PaperOut.model_validate(p)
+    return get_paper(paper_id, db, current)
 
 
 @router.delete("/{paper_id}", status_code=204)
@@ -175,6 +329,7 @@ def add_paper_item(
         question_id=body.question_id,
         sort_order=body.sort_order,
         score=body.score,
+        auto_split_count=body.auto_split_count,
     )
     db.add(it)
     db.commit()

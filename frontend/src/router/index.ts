@@ -43,16 +43,22 @@ const router = createRouter({
           meta: { permission: "menu.exam.question_manage" },
         },
         {
+          path: "papers/publish",
+          name: "papers-publish",
+          component: () => import("@/views/papers/PaperPublish.vue"),
+          meta: { permission: "menu.exam.paper_publish" },
+        },
+        {
           path: "papers",
           name: "papers",
           component: () => import("@/views/papers/PaperList.vue"),
-          meta: { permission: "menu.exam.papers" },
+          meta: { permission: "menu.exam.paper_manage" },
         },
         {
           path: "papers/:id",
           name: "paper-detail",
           component: () => import("@/views/papers/PaperDetail.vue"),
-          meta: { permission: "menu.exam.papers" },
+          meta: { permission: "menu.exam.paper_manage" },
         },
         {
           path: "sessions",
@@ -89,6 +95,12 @@ const router = createRouter({
           name: "system-course",
           component: () => import("@/views/system/CourseList.vue"),
           meta: { permission: "menu.system.course", title: "课程信息" },
+        },
+        {
+          path: "system/paper-level",
+          name: "system-paper-level",
+          component: () => import("@/views/system/PaperLevelList.vue"),
+          meta: { permission: "menu.system.paper_level", title: "试卷等级" },
         },
         {
           path: "system/document-design",

@@ -20,9 +20,17 @@
             <span class="menu-item-inner">题库管理</span>
           </el-menu-item>
         </el-sub-menu>
-        <el-menu-item v-if="auth.can('menu.exam.papers')" index="/papers">
-          <span class="menu-item-inner"><AppEmoji name="papers" size="sm" decorative />试卷</span>
-        </el-menu-item>
+        <el-sub-menu v-if="auth.canAny('menu.exam.paper_manage', 'menu.exam.paper_publish')" index="exam-paper-archive">
+          <template #title>
+            <span class="menu-item-inner"><AppEmoji name="papers" size="sm" decorative />试卷档案</span>
+          </template>
+          <el-menu-item v-if="auth.can('menu.exam.paper_manage')" index="/papers">
+            <span class="menu-item-inner">试卷管理</span>
+          </el-menu-item>
+          <el-menu-item v-if="auth.can('menu.exam.paper_publish')" index="/papers/publish">
+            <span class="menu-item-inner">试卷发布</span>
+          </el-menu-item>
+        </el-sub-menu>
         <el-menu-item v-if="auth.can('menu.exam.sessions')" index="/sessions">
           <span class="menu-item-inner"><AppEmoji name="sessions" size="sm" decorative />考试场次</span>
         </el-menu-item>
@@ -38,6 +46,7 @@
               'menu.system.roles',
               'menu.system.enterprise',
               'menu.system.course',
+              'menu.system.paper_level',
               'menu.system.document',
               'menu.system.print',
               'menu.system.online',
@@ -64,7 +73,7 @@
             </el-menu-item>
           </el-sub-menu>
           <el-sub-menu
-            v-if="auth.canAny('menu.system.enterprise', 'menu.system.course')"
+            v-if="auth.canAny('menu.system.enterprise', 'menu.system.course', 'menu.system.paper_level')"
             index="sys-basic"
           >
             <template #title>
@@ -75,6 +84,9 @@
             </el-menu-item>
             <el-menu-item v-if="auth.can('menu.system.course')" index="/system/course">
               <span class="menu-item-inner"><AppEmoji name="course" size="sm" decorative />课程信息</span>
+            </el-menu-item>
+            <el-menu-item v-if="auth.can('menu.system.paper_level')" index="/system/paper-level">
+              <span class="menu-item-inner">试卷等级</span>
             </el-menu-item>
           </el-sub-menu>
           <el-sub-menu
