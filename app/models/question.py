@@ -22,6 +22,7 @@ class Question(Base):
     __tablename__ = "qb_question"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    question_no: Mapped[str] = mapped_column(String(64), unique=True, index=True, comment="题号：企业-课程-题型-序号")
     # judge / single / multiple / fill
     q_type: Mapped[str] = mapped_column(String(16), index=True, comment="题型")
     stem: Mapped[str] = mapped_column(Text, comment="题干")

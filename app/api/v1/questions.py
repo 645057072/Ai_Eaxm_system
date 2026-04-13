@@ -21,6 +21,7 @@ from app.schemas.question import (
     QuestionUpdate,
 )
 from app.services.data_scope import assert_question_in_enterprise, restrict_query_by_creator_enterprise
+from app.services.question_number import allocate_question_no
 from app.services.question_import import (
     build_image_placeholder,
     build_questions_from_text,
@@ -33,6 +34,7 @@ router = APIRouter()
 def _to_out(obj: Question) -> QuestionOut:
     return QuestionOut(
         id=obj.id,
+        question_no=obj.question_no,
         q_type=obj.q_type,
         stem=obj.stem,
         options_json=obj.options_json,
@@ -154,7 +156,9 @@ async def import_questions(
         raise HTTPException(status_code=400, detail="未能从文件中解析出题目")
     created = 0
     for it in items:
+        qn = allocate_question_no(db, enterprise_id, course_id, it["q_type"])
         obj = Question(
+            question_no=qn,
             q_type=it["q_type"],
             stem=it["stem"],
             options_json=it.get("options_json"),
@@ -167,6 +171,7 @@ async def import_questions(
             created_by=current.id,
         )
         db.add(obj)
+        db.flush()
         created += 1
     db.commit()
     return QuestionImportResult(created=created, message=f"已导入 {created} 道题目草稿")
@@ -179,7 +184,9 @@ def create_question(
     current: Annotated[User, Depends(require_permission("action.question.manage"))],
 ) -> QuestionOut:
     """新增题目。"""
+    qn = allocate_question_no(db, body.enterprise_id, body.course_id, body.q_type)
     obj = Question(
+        question_no=qn,
         q_type=body.q_type,
         stem=body.stem,
         options_json=body.options_json,

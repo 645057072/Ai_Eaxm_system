@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 class QuestionCreate(BaseModel):
     q_type: str = Field(..., description="judge|single|multiple|fill")
-    stem: str = Field(..., min_length=1)
+    stem: str = Field(..., min_length=1, max_length=2000, description="题干，不含解析，最长2000字")
     options_json: Optional[Any] = None
     answer_json: Any = None
     analysis: Optional[str] = None
@@ -21,7 +21,7 @@ class QuestionCreate(BaseModel):
 
 class QuestionUpdate(BaseModel):
     q_type: Optional[str] = None
-    stem: Optional[str] = None
+    stem: Optional[str] = Field(default=None, max_length=2000)
     options_json: Optional[Any] = None
     answer_json: Optional[Any] = None
     analysis: Optional[str] = None
@@ -33,6 +33,7 @@ class QuestionUpdate(BaseModel):
 
 class QuestionOut(BaseModel):
     id: int
+    question_no: str
     q_type: str
     stem: str
     options_json: Optional[Any] = None

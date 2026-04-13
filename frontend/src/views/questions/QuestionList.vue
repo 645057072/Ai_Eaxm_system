@@ -49,6 +49,7 @@
     <el-table :data="rows" @selection-change="onSelectionChange">
       <el-table-column type="selection" width="48" />
       <el-table-column prop="id" label="ID" width="70" />
+      <el-table-column prop="question_no" label="题号" width="130" show-overflow-tooltip />
       <el-table-column label="题型" width="90">
         <template #default="{ row }">{{ qTypeLabel[row.q_type as string] ?? row.q_type }}</template>
       </el-table-column>
@@ -119,6 +120,12 @@
             <el-option v-for="c in formCourseOpts" :key="c.id" :label="courseOptLabel(c)" :value="c.id" />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="form.id" label="题号">
+          <el-input :model-value="form.question_no || '—'" disabled />
+        </el-form-item>
+        <el-form-item v-else label="题号">
+          <el-input model-value="保存后按企业、课程、题型自动生成" disabled />
+        </el-form-item>
         <el-form-item label="题型">
           <el-select v-model="form.q_type" style="width: 100%">
             <el-option label="判断 judge" value="judge" />
@@ -127,7 +134,15 @@
             <el-option label="填空 fill" value="fill" />
           </el-select>
         </el-form-item>
-        <el-form-item label="题干"><el-input v-model="form.stem" type="textarea" :rows="4" /></el-form-item>
+        <el-form-item label="题干"
+          ><el-input
+            v-model="form.stem"
+            type="textarea"
+            :rows="4"
+            maxlength="2000"
+            show-word-limit
+            placeholder="仅题干与选项文字，不含答案与解析"
+        /></el-form-item>
         <el-form-item label="选项 JSON"
           ><el-input v-model="optionsText" type="textarea" :rows="4" placeholder='如 [{"key":"A","text":"..."}]'
         /></el-form-item>
@@ -269,6 +284,7 @@ const optionsText = ref("");
 const answerText = ref("");
 const form = reactive({
   id: 0,
+  question_no: "",
   q_type: "single",
   stem: "",
   options_json: null as unknown,
@@ -524,6 +540,7 @@ async function onBatchCommand(cmd: string) {
 async function openEdit(row?: Record<string, unknown>) {
   if (!row) {
     form.id = 0;
+    form.question_no = "";
     form.q_type = "single";
     form.stem = "";
     form.analysis = "";
@@ -542,6 +559,7 @@ async function openEdit(row?: Record<string, unknown>) {
     if (form.enterprise_id) await remoteFormCourses("");
   } else {
     form.id = row.id as number;
+    form.question_no = (row.question_no as string) || "";
     form.q_type = row.q_type as string;
     form.stem = row.stem as string;
     form.analysis = (row.analysis as string) || "";
