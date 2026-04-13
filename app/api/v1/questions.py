@@ -18,6 +18,8 @@ from app.models.question import Question
 from app.models.user import User
 from app.schemas.common import PageParams, PageResult
 from app.schemas.question import (
+    QuestionBatchDeleteIn,
+    QuestionBatchDifficultyIn,
     QuestionBatchPublishIn,
     QuestionCreate,
     QuestionImportResult,
@@ -125,6 +127,50 @@ def batch_publish_questions(
         if obj.status != "published":
             obj.status = "published"
             n_ok += 1
+    db.commit()
+    return {"updated": n_ok}
+
+
+@router.post("/batch-delete", response_model=dict)
+def batch_delete_questions(
+    body: QuestionBatchDeleteIn,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[User, Depends(require_permission("action.question.manage"))],
+) -> dict:
+    """批量删除题目。"""
+    n_ok = 0
+    for qid in body.ids:
+        obj = db.get(Question, qid)
+        if obj is None:
+            continue
+        try:
+            assert_question_in_enterprise(db, current, qid)
+        except HTTPException:
+            continue
+        db.delete(obj)
+        n_ok += 1
+    db.commit()
+    return {"deleted": n_ok}
+
+
+@router.post("/batch-difficulty", response_model=dict)
+def batch_update_difficulty(
+    body: QuestionBatchDifficultyIn,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[User, Depends(require_permission("action.question.manage"))],
+) -> dict:
+    """批量将选中题目的难度系数改为同一值。"""
+    n_ok = 0
+    for qid in body.ids:
+        obj = db.get(Question, qid)
+        if obj is None:
+            continue
+        try:
+            assert_question_in_enterprise(db, current, qid)
+        except HTTPException:
+            continue
+        obj.difficulty = body.difficulty
+        n_ok += 1
     db.commit()
     return {"updated": n_ok}
 

@@ -188,8 +188,27 @@ def _crop_analysis_body(raw: str) -> str:
     return "\n".join(lines_out).strip()
 
 
+def _strip_analysis_page_noise(s: str) -> str:
+    """去掉解析中粘连的 PDF 页码：整行纯数字、标点后的 1～3 位数字、行尾汉字后的短数字。"""
+    if not s:
+        return ""
+    lines_out: List[str] = []
+    for ln in s.splitlines():
+        t = ln.rstrip()
+        if not t:
+            lines_out.append("")
+            continue
+        if re.match(r"^\d{1,3}\s*$", t):
+            continue
+        t = re.sub(r"([。．！!？?，,；;])\s*(\d{1,3})\s*$", r"\1", t)
+        t = re.sub(r"^(.+[\u4e00-\u9fff。．！!？?，,；;])\s*(\d{1,3})\s*$", r"\1", t)
+        lines_out.append(t)
+    return "\n".join(lines_out).rstrip()
+
+
 def _truncate_analysis(s: str) -> Optional[str]:
-    """解析入库前截断长度。"""
+    """解析入库前去掉页码噪声并截断长度。"""
+    s = _strip_analysis_page_noise(s)
     s = s.strip()
     if not s:
         return None

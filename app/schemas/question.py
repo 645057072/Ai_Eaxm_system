@@ -58,6 +58,19 @@ class QuestionBatchPublishIn(BaseModel):
     ids: list[int] = Field(..., min_length=1)
 
 
+class QuestionBatchDeleteIn(BaseModel):
+    """批量删除题目。"""
+
+    ids: list[int] = Field(..., min_length=1)
+
+
+class QuestionBatchDifficultyIn(BaseModel):
+    """批量修改题目难度系数（1～5）。"""
+
+    ids: list[int] = Field(..., min_length=1)
+    difficulty: int = Field(..., ge=1, le=5)
+
+
 class QuestionImportResult(BaseModel):
     """题库导入结果。"""
 

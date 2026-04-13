@@ -30,6 +30,16 @@ export function batchPublishQuestions(ids: number[]) {
   return http.post("/v1/questions/batch-publish", { ids });
 }
 
+/** 批量删除题目 */
+export function batchDeleteQuestions(ids: number[]) {
+  return http.post("/v1/questions/batch-delete", { ids });
+}
+
+/** 批量修改难度系数（1～5） */
+export function batchUpdateQuestionDifficulty(ids: number[], difficulty: number) {
+  return http.post("/v1/questions/batch-difficulty", { ids, difficulty });
+}
+
 /** 导入题库（multipart：course_id、enterprise_id、file） */
 export function importQuestions(formData: FormData) {
   return http.post("/v1/questions/import", formData, {

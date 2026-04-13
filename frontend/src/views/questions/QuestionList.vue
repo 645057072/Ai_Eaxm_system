@@ -35,13 +35,31 @@
       <el-button type="primary" @click="doSearch"><AppEmoji name="search" size="sm" decorative />查询</el-button>
       <el-button type="success" @click="openEdit()"><AppEmoji name="add" size="sm" decorative />新建题目</el-button>
       <el-button v-if="auth.can('action.question.import')" type="warning" @click="openImport">导入题库</el-button>
-      <el-dropdown v-if="auth.can('action.question.batch')" trigger="click" @command="onBatchCommand">
+      <el-dropdown
+        v-if="auth.can('action.question.batch') || auth.can('action.question.manage')"
+        trigger="click"
+        @command="onBatchCommand"
+      >
         <el-button type="primary" :disabled="!selectedRows.length">
           批量操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
         </el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item command="publish">发布</el-dropdown-item>
+            <el-dropdown-item v-if="auth.can('action.question.batch')" command="publish">发布</el-dropdown-item>
+            <el-dropdown-item
+              v-if="auth.can('action.question.manage')"
+              command="difficulty"
+              :divided="auth.can('action.question.batch')"
+            >
+              难度系数
+            </el-dropdown-item>
+            <el-dropdown-item
+              v-if="auth.can('action.question.manage')"
+              command="delete"
+              :divided="auth.can('action.question.batch') || auth.can('action.question.manage')"
+            >
+              删除
+            </el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -60,6 +78,7 @@
       <el-table-column label="企业" width="140" show-overflow-tooltip>
         <template #default="{ row }">{{ row.enterprise_name ?? "—" }}</template>
       </el-table-column>
+      <el-table-column prop="difficulty" label="难度" width="72" align="center" />
       <el-table-column label="状态" width="90">
         <template #default="{ row }">{{ statusLabel[row.status as string] ?? row.status }}</template>
       </el-table-column>
@@ -182,10 +201,12 @@
               <pre class="view-pre">{{ viewDetail.stem }}</pre>
             </el-descriptions-item>
             <el-descriptions-item v-if="viewDetail.options_json != null" label="选项">
-              <pre class="view-pre">{{ formatJsonField(viewDetail.options_json) }}</pre>
+              <pre class="view-pre">{{ formatOptionsForView(viewDetail.options_json) }}</pre>
             </el-descriptions-item>
             <el-descriptions-item label="答案">
-              <pre class="view-pre">{{ formatJsonField(viewDetail.answer_json) }}</pre>
+              <pre class="view-pre">{{
+                formatAnswerForView(viewDetail.answer_json, viewDetail.q_type, viewDetail.options_json)
+              }}</pre>
             </el-descriptions-item>
             <el-descriptions-item v-if="viewDetail.analysis" label="解析">
               <pre class="view-pre">{{ viewDetail.analysis }}</pre>
@@ -253,6 +274,25 @@
         <el-button type="primary" :loading="importLoading" @click="submitImport">开始导入</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="batchDifficultyDlg"
+      title="批量设置难度系数"
+      width="420px"
+      destroy-on-close
+      @closed="onBatchDifficultyClosed"
+    >
+      <p class="hint-text">已选 {{ batchDifficultyIds.length }} 道题目，将统一设为以下难度（1～5，数值越大表示难度越高）。</p>
+      <el-form label-width="100px">
+        <el-form-item label="难度系数">
+          <el-input-number v-model="batchDifficultyValue" :min="1" :max="5" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchDifficultyDlg = false">取消</el-button>
+        <el-button type="primary" :loading="batchDifficultyLoading" @click="submitBatchDifficulty">确定</el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -272,6 +312,8 @@ import {
   importQuestions,
   getQuestion,
   getQuestionNeighbors,
+  batchDeleteQuestions,
+  batchUpdateQuestionDifficulty,
 } from "@/api/questions";
 import { useAuthStore } from "@/stores/auth";
 
@@ -342,6 +384,11 @@ const importFile = ref<File | null>(null);
 const importLoading = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
+const batchDifficultyDlg = ref(false);
+const batchDifficultyValue = ref(1);
+const batchDifficultyLoading = ref(false);
+const batchDifficultyIds = ref<number[]>([]);
+
 type ViewQuestionDetail = {
   id: number;
   question_no: string;
@@ -377,6 +424,60 @@ function formatJsonField(v: unknown) {
   if (v == null) return "—";
   if (typeof v === "string") return v;
   return JSON.stringify(v, null, 2);
+}
+
+type ViewOptItem = { key?: string; text?: string };
+
+function formatOptionsForView(opts: unknown): string {
+  if (opts == null) return "—";
+  if (!Array.isArray(opts)) return formatJsonField(opts);
+  return (opts as ViewOptItem[])
+    .map((o) => {
+      const k = (o.key ?? "").trim();
+      const t = (o.text ?? "").trim();
+      return k ? `${k}. ${t}` : t;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function optionTextByKey(opts: unknown, key: string): string | null {
+  if (!key || !Array.isArray(opts)) return null;
+  const row = (opts as ViewOptItem[]).find((o) => String(o.key ?? "").toUpperCase() === key.toUpperCase());
+  const t = row?.text;
+  return t != null && String(t).trim() !== "" ? String(t).trim() : null;
+}
+
+function formatAnswerForView(ans: unknown, qType: string, options: unknown): string {
+  if (ans == null) return "—";
+  if (typeof ans === "string") return ans;
+  if (typeof ans !== "object") return String(ans);
+  const o = ans as Record<string, unknown>;
+  if (qType === "judge") {
+    const c = o.choice;
+    if (c === "T" || c === true) return "正确";
+    if (c === "F" || c === false) return "错误";
+    return c != null ? String(c) : "—";
+  }
+  if (qType === "multiple") {
+    const raw = o.choices;
+    if (!Array.isArray(raw) || raw.length === 0) return formatJsonField(ans);
+    const keys = raw.map((x) => String(x).toUpperCase());
+    return keys
+      .map((k) => {
+        const label = optionTextByKey(options, k);
+        return label ? `${k}（${label}）` : k;
+      })
+      .join("、");
+  }
+  if (qType === "fill") {
+    const t = o.text;
+    return t != null && String(t) !== "" ? String(t) : "—";
+  }
+  const k = o.choice != null ? String(o.choice).toUpperCase() : "";
+  if (!k) return formatJsonField(ans);
+  const label = optionTextByKey(options, k);
+  return label ? `${k}（${label}）` : k;
 }
 
 function neighborQueryParams(): Record<string, unknown> {
@@ -636,18 +737,64 @@ async function submitImport() {
   }
 }
 
-async function onBatchCommand(cmd: string) {
-  if (cmd !== "publish") return;
-  const ids = selectedRows.value.map((r) => r.id as number);
-  if (!ids.length) return;
+function onBatchDifficultyClosed() {
+  batchDifficultyIds.value = [];
+}
+
+async function submitBatchDifficulty() {
+  if (!batchDifficultyIds.value.length) {
+    batchDifficultyDlg.value = false;
+    return;
+  }
+  batchDifficultyLoading.value = true;
   try {
-    await ElMessageBox.confirm(`将选中的 ${ids.length} 道题目设为已发布？`, "批量发布", { type: "warning" });
-    const { data } = await batchPublishQuestions(ids);
+    const { data } = await batchUpdateQuestionDifficulty(batchDifficultyIds.value, batchDifficultyValue.value);
     const n = (data as { updated?: number }).updated ?? 0;
-    ElMessage.success(`已发布 ${n} 道题目`);
+    ElMessage.success(`已更新 ${n} 道题目的难度系数`);
+    batchDifficultyDlg.value = false;
     await load();
   } catch (e) {
-    if (e !== "cancel") ElMessage.error("批量发布失败");
+    ElMessage.error(apiErrorMessage(e, "批量修改难度失败"));
+  } finally {
+    batchDifficultyLoading.value = false;
+  }
+}
+
+async function onBatchCommand(cmd: string) {
+  const ids = selectedRows.value.map((r) => r.id as number);
+  if (!ids.length) return;
+  if (cmd === "publish") {
+    try {
+      await ElMessageBox.confirm(`将选中的 ${ids.length} 道题目设为已发布？`, "批量发布", { type: "warning" });
+      const { data } = await batchPublishQuestions(ids);
+      const n = (data as { updated?: number }).updated ?? 0;
+      ElMessage.success(`已发布 ${n} 道题目`);
+      await load();
+    } catch (e) {
+      if (e !== "cancel") ElMessage.error("批量发布失败");
+    }
+    return;
+  }
+  if (cmd === "difficulty") {
+    batchDifficultyIds.value = [...ids];
+    batchDifficultyValue.value = 1;
+    batchDifficultyDlg.value = true;
+    return;
+  }
+  if (cmd === "delete") {
+    try {
+      await ElMessageBox.confirm(
+        `确定删除选中的 ${ids.length} 道题目？删除后不可恢复。`,
+        "批量删除",
+        { type: "warning" },
+      );
+      const { data } = await batchDeleteQuestions(ids);
+      const n = (data as { deleted?: number }).deleted ?? 0;
+      ElMessage.success(`已删除 ${n} 道题目`);
+      await load();
+    } catch (e) {
+      if (e !== "cancel") ElMessage.error(apiErrorMessage(e, "批量删除失败"));
+    }
   }
 }
 
