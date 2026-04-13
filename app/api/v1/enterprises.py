@@ -6,11 +6,11 @@ import uuid
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, require_permission
+from app.api.deps import get_db, require_any_permission, require_permission
 from app.core.permissions import is_super_role
 from app.core.config import get_settings
 from app.models.enterprise import Enterprise
@@ -33,30 +33,38 @@ def _upload_root() -> Path:
 @router.get("", response_model=PageResult[EnterpriseOut])
 def list_enterprises(
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_permission("list.enterprise"))],
+    current: Annotated[
+        User,
+        Depends(require_any_permission("list.enterprise", "list.question")),
+    ],
     page: Annotated[PageParams, Depends()],
+    keyword: Annotated[str | None, Query(None, description="模糊匹配企业名称")] = None,
 ) -> PageResult[EnterpriseOut]:
-    """企业档案：超管查看全部；其余用户仅本企业。"""
+    """企业档案：超管查看全部；其余用户仅本企业。支持 keyword 模糊搜索。"""
+    q = (keyword or "").strip()
+    kw_like = f"%{q}%" if q else None
+
     if is_super_role(current):
         stmt = select(func.count()).select_from(Enterprise)
+        qry = select(Enterprise)
+        if kw_like is not None:
+            stmt = stmt.where(Enterprise.name.like(kw_like))
+            qry = qry.where(Enterprise.name.like(kw_like))
         total = db.scalar(stmt) or 0
         rows = db.scalars(
-            select(Enterprise)
-            .offset(page.skip)
-            .limit(page.limit)
-            .order_by(Enterprise.id.desc())
+            qry.offset(page.skip).limit(page.limit).order_by(Enterprise.id.desc())
         ).all()
     else:
         if current.enterprise_id is None:
             return PageResult[EnterpriseOut](total=0, items=[])
         stmt = select(func.count()).select_from(Enterprise).where(Enterprise.id == current.enterprise_id)
+        qry = select(Enterprise).where(Enterprise.id == current.enterprise_id)
+        if kw_like is not None:
+            stmt = stmt.where(Enterprise.name.like(kw_like))
+            qry = qry.where(Enterprise.name.like(kw_like))
         total = db.scalar(stmt) or 0
         rows = db.scalars(
-            select(Enterprise)
-            .where(Enterprise.id == current.enterprise_id)
-            .offset(page.skip)
-            .limit(page.limit)
-            .order_by(Enterprise.id.desc())
+            qry.offset(page.skip).limit(page.limit).order_by(Enterprise.id.desc())
         ).all()
     return PageResult[EnterpriseOut](total=int(total), items=[EnterpriseOut.model_validate(r) for r in rows])
 

@@ -11,10 +11,28 @@
         <el-option label="草稿" value="draft" />
         <el-option label="已发布" value="published" />
       </el-select>
-      <el-select v-model="filterCourseId" clearable placeholder="课程" filterable style="width: 200px">
-        <el-option v-for="c in courseOptions" :key="c.id" :label="c.name" :value="c.id" />
+      <el-select
+        v-model="filterCourseId"
+        clearable
+        filterable
+        remote
+        reserve-keyword
+        placeholder="课程（输入名称模糊搜）"
+        :remote-method="remoteToolbarCourses"
+        :loading="toolbarCourseLoading"
+        style="width: 240px"
+        @visible-change="(v: boolean) => v && remoteToolbarCourses('')"
+      >
+        <el-option v-for="c in toolbarCourseOpts" :key="c.id" :label="c.label" :value="c.id" />
       </el-select>
-      <el-button type="primary" @click="load"><AppEmoji name="search" size="sm" decorative />查询</el-button>
+      <el-input
+        v-model="filterStem"
+        clearable
+        placeholder="题干关键字"
+        style="width: 180px"
+        @keyup.enter="doSearch"
+      />
+      <el-button type="primary" @click="doSearch"><AppEmoji name="search" size="sm" decorative />查询</el-button>
       <el-button type="success" @click="openEdit()"><AppEmoji name="add" size="sm" decorative />新建题目</el-button>
       <el-button v-if="auth.can('action.question.import')" type="warning" @click="openImport">导入题库</el-button>
       <el-dropdown v-if="auth.can('action.question.batch')" trigger="click" @command="onBatchCommand">
@@ -64,13 +82,41 @@
     <el-dialog v-model="dlg" :title="form.id ? '编辑题目' : '新建题目'" width="640px">
       <el-form label-width="100px">
         <el-form-item label="所属企业">
-          <el-select v-model="form.enterprise_id" clearable placeholder="请选择" style="width: 100%" @change="onFormEnterpriseChange">
-            <el-option v-for="e in enterpriseOptions" :key="e.id" :label="e.name" :value="e.id" />
+          <el-select
+            v-model="form.enterprise_id"
+            clearable
+            filterable
+            remote
+            reserve-keyword
+            placeholder="输入企业名称搜索"
+            :remote-method="remoteFormEnterprises"
+            :loading="formEntLoading"
+            style="width: 100%"
+            @visible-change="(v: boolean) => v && remoteFormEnterprises('')"
+            @change="onFormEnterpriseChange"
+          >
+            <el-option v-for="e in formEntOpts" :key="e.id" :label="e.name" :value="e.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="所属课程">
-          <el-select v-model="form.course_id" clearable placeholder="请选择" style="width: 100%" filterable>
-            <el-option v-for="c in coursesForForm" :key="c.id" :label="c.name" :value="c.id" />
+          <el-select
+            v-model="form.course_id"
+            clearable
+            filterable
+            remote
+            reserve-keyword
+            placeholder="请先选企业，再输入课程名搜索"
+            :disabled="!form.enterprise_id"
+            :remote-method="remoteFormCourses"
+            :loading="formCourseLoading"
+            style="width: 100%"
+            @visible-change="
+              (v: boolean) => {
+                if (v && form.enterprise_id) remoteFormCourses('');
+              }
+            "
+          >
+            <el-option v-for="c in formCourseOpts" :key="c.id" :label="courseOptLabel(c)" :value="c.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="题型">
@@ -106,13 +152,39 @@
     <el-dialog v-model="importDlg" title="导入题库" width="520px" @closed="resetImport">
       <el-form label-width="100px">
         <el-form-item label="所属企业" required>
-          <el-select v-model="importEnterpriseId" placeholder="请选择" style="width: 100%" @change="importCourseId = undefined">
-            <el-option v-for="e in enterpriseOptions" :key="e.id" :label="e.name" :value="e.id" />
+          <el-select
+            v-model="importEnterpriseId"
+            filterable
+            remote
+            reserve-keyword
+            placeholder="输入企业名称搜索"
+            :remote-method="remoteImportEnterprises"
+            :loading="importEntLoading"
+            style="width: 100%"
+            @visible-change="(v: boolean) => v && remoteImportEnterprises('')"
+            @change="importCourseId = undefined"
+          >
+            <el-option v-for="e in importEntOpts" :key="e.id" :label="e.name" :value="e.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="所属课程" required>
-          <el-select v-model="importCourseId" placeholder="请选择" style="width: 100%" filterable :disabled="!importEnterpriseId">
-            <el-option v-for="c in coursesForImport" :key="c.id" :label="c.name" :value="c.id" />
+          <el-select
+            v-model="importCourseId"
+            filterable
+            remote
+            reserve-keyword
+            placeholder="请先选企业，再输入课程名搜索"
+            :disabled="!importEnterpriseId"
+            :remote-method="remoteImportCourses"
+            :loading="importCourseLoading"
+            style="width: 100%"
+            @visible-change="
+              (v: boolean) => {
+                if (v && importEnterpriseId) remoteImportCourses('');
+              }
+            "
+          >
+            <el-option v-for="c in importCourseOpts" :key="c.id" :label="courseOptLabel(c)" :value="c.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="导入文件" required>
@@ -134,7 +206,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { onMounted, reactive, ref, watch } from "vue";
 import { ArrowDown } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { listCourses } from "@/api/courses";
@@ -150,6 +222,13 @@ import {
 import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
+
+type CourseOpt = {
+  id: number;
+  name: string;
+  enterprise_id: number;
+  enterprise?: { id: number; name: string };
+};
 
 const qTypeLabel: Record<string, string> = {
   judge: "判断",
@@ -169,11 +248,21 @@ const limit = ref(20);
 const filterType = ref<string | undefined>();
 const filterStatus = ref<string | undefined>();
 const filterCourseId = ref<number | undefined>();
+const filterStem = ref("");
 const selectedRows = ref<Record<string, unknown>[]>([]);
 
-type Opt = { id: number; name: string; enterprise_id?: number };
-const courseOptions = ref<Opt[]>([]);
-const enterpriseOptions = ref<Opt[]>([]);
+const toolbarCourseOpts = ref<{ id: number; label: string }[]>([]);
+const toolbarCourseLoading = ref(false);
+
+const formEntOpts = ref<{ id: number; name: string }[]>([]);
+const formEntLoading = ref(false);
+const formCourseOpts = ref<CourseOpt[]>([]);
+const formCourseLoading = ref(false);
+
+const importEntOpts = ref<{ id: number; name: string }[]>([]);
+const importEntLoading = ref(false);
+const importCourseOpts = ref<CourseOpt[]>([]);
+const importCourseLoading = ref(false);
 
 const dlg = ref(false);
 const optionsText = ref("");
@@ -198,15 +287,126 @@ const importFile = ref<File | null>(null);
 const importLoading = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
-const coursesForImport = computed(() => {
-  if (!importEnterpriseId.value) return [];
-  return courseOptions.value.filter((c) => c.enterprise_id === importEnterpriseId.value);
-});
+function courseOptLabel(c: CourseOpt) {
+  const en = c.enterprise?.name;
+  return en ? `${c.name}（${en}）` : c.name;
+}
 
-const coursesForForm = computed(() => {
-  if (!form.enterprise_id) return courseOptions.value;
-  return courseOptions.value.filter((c) => c.enterprise_id === form.enterprise_id);
-});
+async function remoteToolbarCourses(query: string) {
+  toolbarCourseLoading.value = true;
+  try {
+    const { data } = await listCourses({
+      skip: 0,
+      limit: 50,
+      keyword: query.trim() || undefined,
+    });
+    const items = (data.items || []) as CourseOpt[];
+    toolbarCourseOpts.value = items.map((c) => ({
+      id: c.id,
+      label: courseOptLabel(c),
+    }));
+  } finally {
+    toolbarCourseLoading.value = false;
+  }
+}
+
+async function remoteFormEnterprises(query: string) {
+  formEntLoading.value = true;
+  try {
+    const { data } = await listEnterprises({
+      skip: 0,
+      limit: 50,
+      keyword: query.trim() || undefined,
+    });
+    formEntOpts.value = (data.items || []).map((e: { id: number; name: string }) => ({
+      id: e.id,
+      name: e.name,
+    }));
+  } finally {
+    formEntLoading.value = false;
+  }
+}
+
+async function remoteFormCourses(query: string) {
+  if (!form.enterprise_id) {
+    formCourseOpts.value = [];
+    return;
+  }
+  formCourseLoading.value = true;
+  try {
+    const { data } = await listCourses({
+      skip: 0,
+      limit: 50,
+      keyword: query.trim() || undefined,
+      enterprise_id: auth.isAdmin ? form.enterprise_id : undefined,
+    });
+    formCourseOpts.value = (data.items || []) as CourseOpt[];
+  } finally {
+    formCourseLoading.value = false;
+  }
+}
+
+async function remoteImportEnterprises(query: string) {
+  importEntLoading.value = true;
+  try {
+    const { data } = await listEnterprises({
+      skip: 0,
+      limit: 50,
+      keyword: query.trim() || undefined,
+    });
+    importEntOpts.value = (data.items || []).map((e: { id: number; name: string }) => ({
+      id: e.id,
+      name: e.name,
+    }));
+  } finally {
+    importEntLoading.value = false;
+  }
+}
+
+async function remoteImportCourses(query: string) {
+  if (!importEnterpriseId.value) {
+    importCourseOpts.value = [];
+    return;
+  }
+  importCourseLoading.value = true;
+  try {
+    const { data } = await listCourses({
+      skip: 0,
+      limit: 50,
+      keyword: query.trim() || undefined,
+      enterprise_id: auth.isAdmin ? importEnterpriseId.value : undefined,
+    });
+    importCourseOpts.value = (data.items || []) as CourseOpt[];
+  } finally {
+    importCourseLoading.value = false;
+  }
+}
+
+function mergeFormEnterprise(id: number | null, name: string | null | undefined) {
+  if (!id || !name) return;
+  if (!formEntOpts.value.some((e) => e.id === id)) {
+    formEntOpts.value = [{ id, name }, ...formEntOpts.value];
+  }
+}
+
+function mergeFormCourse(row: Record<string, unknown>) {
+  const cid = row.course_id as number | null;
+  const cname = row.course_name as string | null | undefined;
+  const eid = row.enterprise_id as number | null;
+  if (!cid || !cname) return;
+  const ename = row.enterprise_name as string | undefined;
+  if (!formCourseOpts.value.some((c) => c.id === cid)) {
+    formCourseOpts.value = [
+      {
+        id: cid,
+        name: cname,
+        enterprise_id: eid ?? 0,
+        enterprise: ename ? { id: eid ?? 0, name: ename } : undefined,
+      },
+      ...formCourseOpts.value,
+    ];
+  }
+}
 
 watch(optionsText, (v) => {
   if (!v.trim()) {
@@ -229,48 +429,48 @@ watch(answerText, (v) => {
 
 function onFormEnterpriseChange() {
   const eid = form.enterprise_id;
-  if (form.course_id && eid) {
-    const c = courseOptions.value.find((x) => x.id === form.course_id);
-    if (c && c.enterprise_id !== eid) form.course_id = null;
-  }
+  form.course_id = null;
+  formCourseOpts.value = [];
+  if (eid) void remoteFormCourses("");
 }
 
 function onSelectionChange(sel: Record<string, unknown>[]) {
   selectedRows.value = sel;
 }
 
-async function loadRef() {
-  const [ce, en] = await Promise.all([
-    listCourses({ skip: 0, limit: 500 }),
-    listEnterprises({ skip: 0, limit: 500 }),
-  ]);
-  const items = (ce.data.items || []) as { id: number; name: string; enterprise_id: number }[];
-  courseOptions.value = items.map((c) => ({ id: c.id, name: c.name, enterprise_id: c.enterprise_id }));
-  enterpriseOptions.value = ((en.data.items || []) as { id: number; name: string }[]).map((e) => ({
-    id: e.id,
-    name: e.name,
-  }));
-}
-
 async function load() {
   const skip = (page.value - 1) * limit.value;
+  const stem = filterStem.value.trim();
   const { data } = await listQuestions({
     skip,
     limit: limit.value,
     q_type: filterType.value,
     status: filterStatus.value,
     course_id: filterCourseId.value,
+    stem_keyword: stem || undefined,
   });
   total.value = data.total;
   rows.value = data.items;
 }
 
-function openImport() {
+function doSearch() {
+  page.value = 1;
+  load();
+}
+
+async function openImport() {
   importEnterpriseId.value = auth.me?.enterprise_id ?? undefined;
   importCourseId.value = undefined;
   importFile.value = null;
   if (fileInputRef.value) fileInputRef.value.value = "";
   importDlg.value = true;
+  await remoteImportEnterprises("");
+  const mid = importEnterpriseId.value;
+  const mname = auth.me?.enterprise?.name;
+  if (mid && mname && !importEntOpts.value.some((e) => e.id === mid)) {
+    importEntOpts.value = [{ id: mid, name: mname }, ...importEntOpts.value];
+  }
+  if (importEnterpriseId.value) await remoteImportCourses("");
 }
 
 function resetImport() {
@@ -321,7 +521,7 @@ async function onBatchCommand(cmd: string) {
   }
 }
 
-function openEdit(row?: Record<string, unknown>) {
+async function openEdit(row?: Record<string, unknown>) {
   if (!row) {
     form.id = 0;
     form.q_type = "single";
@@ -335,6 +535,11 @@ function openEdit(row?: Record<string, unknown>) {
     answerText.value = "";
     form.options_json = null;
     form.answer_json = null;
+    formEntOpts.value = [];
+    formCourseOpts.value = [];
+    dlg.value = true;
+    await remoteFormEnterprises("");
+    if (form.enterprise_id) await remoteFormCourses("");
   } else {
     form.id = row.id as number;
     form.q_type = row.q_type as string;
@@ -349,8 +554,12 @@ function openEdit(row?: Record<string, unknown>) {
       typeof row.answer_json === "string" ? row.answer_json : JSON.stringify(row.answer_json, null, 2);
     form.answer_json = row.answer_json;
     form.options_json = row.options_json;
+    dlg.value = true;
+    await remoteFormEnterprises("");
+    mergeFormEnterprise(form.enterprise_id, row.enterprise_name as string);
+    await remoteFormCourses("");
+    mergeFormCourse(row);
   }
-  dlg.value = true;
 }
 
 async function save() {
@@ -394,7 +603,7 @@ async function onDel(row: Record<string, unknown>) {
 }
 
 onMounted(async () => {
-  await loadRef();
+  await remoteToolbarCourses("");
   await load();
 });
 </script>

@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
@@ -58,8 +58,12 @@ def list_questions(
     q_type: str | None = None,
     status: str | None = None,
     course_id: int | None = None,
+    stem_keyword: Annotated[str | None, Query(None, description="题干模糊匹配")] = None,
 ) -> PageResult[QuestionOut]:
     """题目列表。"""
+    sk = (stem_keyword or "").strip()
+    stem_like = f"%{sk}%" if sk else None
+
     stmt = select(func.count()).select_from(Question).join(User, Question.created_by == User.id)
     stmt = restrict_query_by_creator_enterprise(stmt, current)
     if q_type:
@@ -68,6 +72,8 @@ def list_questions(
         stmt = stmt.where(Question.status == status)
     if course_id is not None:
         stmt = stmt.where(Question.course_id == course_id)
+    if stem_like is not None:
+        stmt = stmt.where(Question.stem.like(stem_like))
     total = db.scalar(stmt) or 0
     q = select(Question).join(User, Question.created_by == User.id)
     q = restrict_query_by_creator_enterprise(q, current)
@@ -77,6 +83,8 @@ def list_questions(
         q = q.where(Question.status == status)
     if course_id is not None:
         q = q.where(Question.course_id == course_id)
+    if stem_like is not None:
+        q = q.where(Question.stem.like(stem_like))
     q = q.options(joinedload(Question.course), joinedload(Question.enterprise))
     rows = db.scalars(q.offset(page.skip).limit(page.limit).order_by(Question.id.desc())).all()
     return PageResult[QuestionOut](total=int(total), items=[_to_out(r) for r in rows])

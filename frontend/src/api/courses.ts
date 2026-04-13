@@ -1,6 +1,11 @@
 import { http } from "./http";
 
-export function listCourses(params: { skip?: number; limit?: number }) {
+export function listCourses(params: {
+  skip?: number;
+  limit?: number;
+  keyword?: string;
+  enterprise_id?: number;
+}) {
   return http.get("/v1/courses", { params });
 }
 

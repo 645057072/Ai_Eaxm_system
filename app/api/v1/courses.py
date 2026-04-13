@@ -3,13 +3,14 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.deps import get_db, require_permission
+from app.api.deps import get_db, require_any_permission, require_permission
 from app.core.permissions import is_super_role
 from app.models.course import Course
+from app.models.enterprise import Enterprise
 from app.models.user import User
 from app.schemas.common import PageParams, PageResult
 from app.schemas.course import CourseCreate, CourseOut, CourseUpdate
@@ -21,33 +22,49 @@ router = APIRouter()
 @router.get("", response_model=PageResult[CourseOut])
 def list_courses(
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_permission("list.course"))],
+    current: Annotated[
+        User,
+        Depends(require_any_permission("list.course", "list.question")),
+    ],
     page: Annotated[PageParams, Depends()],
+    keyword: Annotated[str | None, Query(None, description="模糊匹配课程名称、讲师、所属企业")] = None,
+    enterprise_id: Annotated[int | None, Query(None, description="仅返回该企业下的课程（题库等场景）")] = None,
 ) -> PageResult[CourseOut]:
-    """课程列表：超管全部；其余用户仅本企业。"""
-    if is_super_role(current):
-        stmt = select(func.count()).select_from(Course)
-        total = db.scalar(stmt) or 0
-        rows = db.scalars(
-            select(Course)
-            .options(joinedload(Course.enterprise))
-            .offset(page.skip)
-            .limit(page.limit)
-            .order_by(Course.id.desc())
-        ).all()
-    else:
-        if current.enterprise_id is None:
-            return PageResult[CourseOut](total=0, items=[])
-        stmt = select(func.count()).select_from(Course).where(Course.enterprise_id == current.enterprise_id)
-        total = db.scalar(stmt) or 0
-        rows = db.scalars(
-            select(Course)
-            .options(joinedload(Course.enterprise))
-            .where(Course.enterprise_id == current.enterprise_id)
-            .offset(page.skip)
-            .limit(page.limit)
-            .order_by(Course.id.desc())
-        ).all()
+    """课程列表：超管全部；其余用户仅本企业。支持 keyword 模糊搜索。"""
+    if not is_super_role(current) and current.enterprise_id is None:
+        return PageResult[CourseOut](total=0, items=[])
+
+    q = (keyword or "").strip()
+    kw_like = f"%{q}%" if q else None
+
+    conds: list = []
+    if not is_super_role(current):
+        conds.append(Course.enterprise_id == current.enterprise_id)
+    elif enterprise_id is not None:
+        conds.append(Course.enterprise_id == enterprise_id)
+    if kw_like is not None:
+        conds.append(
+            or_(
+                Course.name.like(kw_like),
+                Course.instructor.like(kw_like),
+                Enterprise.name.like(kw_like),
+            )
+        )
+
+    base = select(Course).join(Enterprise, Course.enterprise_id == Enterprise.id)
+    cnt = select(func.count()).select_from(Course).join(Enterprise, Course.enterprise_id == Enterprise.id)
+    if conds:
+        w = and_(*conds)
+        base = base.where(w)
+        cnt = cnt.where(w)
+
+    total = db.scalar(cnt) or 0
+    rows = db.scalars(
+        base.options(joinedload(Course.enterprise))
+        .offset(page.skip)
+        .limit(page.limit)
+        .order_by(Course.id.desc())
+    ).all()
     return PageResult[CourseOut](total=int(total), items=[CourseOut.model_validate(r) for r in rows])
 
 

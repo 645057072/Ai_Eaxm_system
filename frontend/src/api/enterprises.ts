@@ -1,6 +1,6 @@
 import { http } from "./http";
 
-export function listEnterprises(params: { skip?: number; limit?: number }) {
+export function listEnterprises(params: { skip?: number; limit?: number; keyword?: string }) {
   return http.get("/v1/enterprises", { params });
 }
 
