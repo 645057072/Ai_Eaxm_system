@@ -35,6 +35,7 @@
       <el-button type="primary" @click="doSearch"><AppEmoji name="search" size="sm" decorative />查询</el-button>
       <el-button type="success" @click="openEdit()"><AppEmoji name="add" size="sm" decorative />新建题目</el-button>
       <el-button v-if="auth.can('action.question.import')" type="warning" @click="openImport">导入题库</el-button>
+      <el-button v-if="lastImportLogText" @click="downloadImportLog">下载导入日志</el-button>
       <el-dropdown
         v-if="auth.can('action.question.batch') || auth.can('action.question.manage')"
         trigger="click"
@@ -93,10 +94,12 @@
     <div class="pager">
       <el-pagination
         background
-        layout="prev, pager, next"
+        layout="total, sizes, prev, pager, next"
         :total="total"
         :page-size="limit"
-        @current-change="(p: number) => { page = p; load(); }"
+        :page-sizes="[50, 100, 200]"
+        @size-change="onPageSizeChange"
+        @current-change="onPageChange"
       />
     </div>
 
@@ -163,13 +166,19 @@
             show-word-limit
             placeholder="仅题干与选项文字，不含答案与解析"
         /></el-form-item>
-        <el-form-item label="选项 JSON"
-          ><el-input v-model="optionsText" type="textarea" :rows="4" placeholder='如 [{"key":"A","text":"..."}]'
+        <el-form-item label="选项（内容）">
+          <el-input type="textarea" :model-value="optionsPreview" readonly :rows="4" class="readonly-preview" />
+        </el-form-item>
+        <el-form-item label="选项（JSON）"
+          ><el-input v-model="optionsText" type="textarea" :rows="3" placeholder='如 [{"key":"A","text":"..."}]'
         /></el-form-item>
-        <el-form-item label="答案 JSON"
-          ><el-input v-model="answerText" type="textarea" :rows="3" placeholder="见详设说明"
+        <el-form-item label="标准答案（内容）">
+          <el-input type="textarea" :model-value="answerPreview" readonly :rows="2" class="readonly-preview" />
+        </el-form-item>
+        <el-form-item label="标准答案（JSON）"
+          ><el-input v-model="answerText" type="textarea" :rows="2" placeholder="见详设说明"
         /></el-form-item>
-        <el-form-item label="解析"><el-input v-model="form.analysis" type="textarea" :rows="2" /></el-form-item>
+        <el-form-item label="解析（内容）"><el-input v-model="form.analysis" type="textarea" :rows="3" /></el-form-item>
         <el-form-item label="难度(1-5)"><el-input-number v-model="form.difficulty" :min="1" :max="5" /></el-form-item>
         <el-form-item label="状态">
           <el-select v-model="form.status" style="width: 100%">
@@ -297,7 +306,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ArrowDown } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { listCourses } from "@/api/courses";
@@ -340,7 +349,8 @@ const statusLabel: Record<string, string> = {
 const rows = ref<Record<string, unknown>[]>([]);
 const total = ref(0);
 const page = ref(1);
-const limit = ref(20);
+const limit = ref(50);
+const lastImportLogText = ref("");
 const filterType = ref<string | undefined>();
 const filterStatus = ref<string | undefined>();
 const filterCourseId = ref<number | undefined>();
@@ -447,6 +457,36 @@ function optionTextByKey(opts: unknown, key: string): string | null {
   const t = row?.text;
   return t != null && String(t).trim() !== "" ? String(t).trim() : null;
 }
+
+function tryParseOptionsFromText(): unknown {
+  const t = optionsText.value.trim();
+  if (!t) return null;
+  try {
+    return JSON.parse(t);
+  } catch {
+    return null;
+  }
+}
+
+function tryParseAnswerFromText(): unknown {
+  const t = answerText.value.trim();
+  if (!t) return null;
+  try {
+    if (t.startsWith("{") || t.startsWith("[")) return JSON.parse(t);
+    return t;
+  } catch {
+    return null;
+  }
+}
+
+const optionsPreview = computed(() => formatOptionsForView(tryParseOptionsFromText()));
+
+const answerPreview = computed(() => {
+  const ans = tryParseAnswerFromText();
+  if (ans === null && !answerText.value.trim()) return "—";
+  if (ans === null) return "（标准答案 JSON 无法解析，请检查格式）";
+  return formatAnswerForView(ans, form.q_type, tryParseOptionsFromText());
+});
 
 function formatAnswerForView(ans: unknown, qType: string, options: unknown): string {
   if (ans == null) return "—";
@@ -689,6 +729,29 @@ function doSearch() {
   load();
 }
 
+function onPageSizeChange(s: number) {
+  limit.value = s;
+  page.value = 1;
+  load();
+}
+
+function onPageChange(p: number) {
+  page.value = p;
+  load();
+}
+
+function downloadImportLog() {
+  const t = lastImportLogText.value;
+  if (!t) return;
+  const blob = new Blob([t], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `题库导入日志_${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 async function openImport() {
   importEnterpriseId.value = auth.me?.enterprise_id ?? undefined;
   importCourseId.value = undefined;
@@ -727,7 +790,17 @@ async function submitImport() {
     fd.append("enterprise_id", String(importEnterpriseId.value));
     fd.append("file", importFile.value);
     const { data } = await importQuestions(fd);
-    ElMessage.success((data as { message?: string }).message || "导入完成");
+    const d = data as {
+      message?: string;
+      log_text?: string;
+      failed?: number;
+    };
+    lastImportLogText.value = d.log_text || "";
+    if ((d.failed ?? 0) > 0) {
+      ElMessage.warning(d.message || "导入完成，部分失败请查看日志");
+    } else {
+      ElMessage.success(d.message || "导入完成");
+    }
     importDlg.value = false;
     await load();
   } catch (e) {
@@ -869,8 +942,8 @@ async function save() {
     ElMessage.success("已保存");
     dlg.value = false;
     await load();
-  } catch {
-    ElMessage.error("保存失败");
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "保存失败"));
   }
 }
 
@@ -919,5 +992,9 @@ onMounted(async () => {
 }
 .view-body {
   min-height: 120px;
+}
+.readonly-preview :deep(.el-textarea__inner) {
+  background: #f8fafc;
+  cursor: default;
 }
 </style>

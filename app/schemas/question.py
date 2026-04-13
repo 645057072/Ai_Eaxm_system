@@ -75,7 +75,11 @@ class QuestionImportResult(BaseModel):
     """题库导入结果。"""
 
     created: int
+    skipped_duplicate: int = 0
+    failed: int = 0
+    by_type: dict[str, int] = Field(default_factory=dict, description="按题型统计成功导入数量")
     message: str
+    log_text: str = Field("", description="导入明细日志，可下载留存")
 
 
 class QuestionNeighborsOut(BaseModel):

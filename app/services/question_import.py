@@ -188,8 +188,8 @@ def _crop_analysis_body(raw: str) -> str:
     return "\n".join(lines_out).strip()
 
 
-def _strip_analysis_page_noise(s: str) -> str:
-    """去掉解析中粘连的 PDF 页码：整行纯数字、标点后的 1～3 位数字、行尾汉字后的短数字。"""
+def _strip_field_page_noise(s: str) -> str:
+    """题干/选项/解析共用：去掉 PDF 粘连页码（整行数字、标点与问号后数字、括号后数字等）。"""
     if not s:
         return ""
     lines_out: List[str] = []
@@ -202,8 +202,16 @@ def _strip_analysis_page_noise(s: str) -> str:
             continue
         t = re.sub(r"([。．！!？?，,；;])\s*(\d{1,3})\s*$", r"\1", t)
         t = re.sub(r"^(.+[\u4e00-\u9fff。．！!？?，,；;])\s*(\d{1,3})\s*$", r"\1", t)
+        t = re.sub(r"([？?！!])\s*\*{0,3}\s*(\d{1,3})\s*\*{0,3}\s*$", r"\1", t)
+        t = re.sub(r"([？?！!])\s+(\d{1,3})\s*$", r"\1", t)
+        t = re.sub(r"(\))\s*(\d{1,3})\s*$", r"\1", t)
         lines_out.append(t)
     return "\n".join(lines_out).rstrip()
+
+
+def _strip_analysis_page_noise(s: str) -> str:
+    """解析字段页码清理（与题干/选项规则一致）。"""
+    return _strip_field_page_noise(s)
 
 
 def _truncate_analysis(s: str) -> Optional[str]:
@@ -427,6 +435,23 @@ def parse_question_block(block: str, section_hint: Optional[str] = None) -> Opti
     }
 
 
+def finalize_import_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    """导入入库前再清一次页码噪声（题干、选项），解析已在 _truncate_analysis 中处理。"""
+    stem = _strip_field_page_noise((item.get("stem") or "").strip())
+    item["stem"] = _truncate_stem(stem)
+    opts = item.get("options_json")
+    if isinstance(opts, list):
+        for o in opts:
+            if isinstance(o, dict) and "text" in o:
+                o["text"] = _strip_field_page_noise(str(o.get("text") or ""))
+    an = item.get("analysis")
+    if an:
+        item["analysis"] = normalize_analysis(str(an))
+    else:
+        item["analysis"] = None
+    return item
+
+
 def build_questions_from_text(text: str) -> List[Dict[str, Any]]:
     t = _normalize_import_text(text)
     blocks = _split_blocks(t)
@@ -439,7 +464,7 @@ def build_questions_from_text(text: str) -> List[Dict[str, Any]]:
         try:
             item = parse_question_block(b2, section_hint=section)
             if item:
-                out.append(item)
+                out.append(finalize_import_item(item))
         except Exception:
             # 单块解析异常不拖垮整份文件
             continue
@@ -448,10 +473,12 @@ def build_questions_from_text(text: str) -> List[Dict[str, Any]]:
 
 def build_image_placeholder(filename: str) -> Dict[str, Any]:
     """图片文件无文本时生成占位草稿，便于后续人工维护。"""
-    return {
-        "q_type": "single",
-        "stem": f"【图片导入】{filename}：请编辑题干与选项",
-        "options_json": [{"key": "A", "text": "选项A"}, {"key": "B", "text": "选项B"}],
-        "answer_json": {"choice": "A"},
-        "analysis": None,
-    }
+    return finalize_import_item(
+        {
+            "q_type": "single",
+            "stem": f"【图片导入】{filename}：请编辑题干与选项",
+            "options_json": [{"key": "A", "text": "选项A"}, {"key": "B", "text": "选项B"}],
+            "answer_json": {"choice": "A"},
+            "analysis": None,
+        }
+    )
