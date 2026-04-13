@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_current_user, require_permission
+from app.api.deps import require_any_permission
 from app.core.permission_catalog import (
     catalog_action_groups,
     catalog_by_kind_sections,
@@ -21,7 +21,16 @@ router = APIRouter()
 
 @router.get("/catalog")
 def get_permission_catalog(
-    _: Annotated[User, Depends(require_permission("action.role.permission"))],
+    _: Annotated[
+        User,
+        Depends(
+            require_any_permission(
+                "action.role.permission",
+                "action.user.create",
+                "action.user.update",
+            )
+        ),
+    ],
 ) -> dict:
     """功能点目录：groups 为扁平标签分组；byKind 为菜单/列表/表单/字段/操作分层，供弹窗授权。"""
     return {

@@ -297,8 +297,9 @@ def catalog_function_module_tree() -> List[Dict[str, Any]]:
         if kind == "menu":
             buckets[mk]["menus"].append(it)
         elif kind == "list":
-            # 字段与列表、表单共用，挂在「表单」节点展示，避免同一字段标签重复出现
-            buckets[mk]["lists"].append({"item": it, "fields": []})
+            ent = _entity_from_list_or_form(it["code"])
+            flist = _fields_for_entity(ent) if ent else []
+            buckets[mk]["lists"].append({"item": it, "fields": flist})
         elif kind == "form":
             ent = _entity_from_list_or_form(it["code"])
             flist = _fields_for_entity(ent) if ent else []

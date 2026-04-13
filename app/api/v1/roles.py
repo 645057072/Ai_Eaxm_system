@@ -27,9 +27,32 @@ def list_roles(
         Depends(require_any_permission("list.role", "action.user.create", "action.user.update")),
     ],
 ) -> List[RoleOut]:
-    """全部角色（角色管理页或用户表单下拉）。"""
+    """全部角色（角色管理页或用户表单下拉）；user_count 为绑定该角色的用户数。"""
     rows = db.scalars(select(Role).order_by(Role.id.asc())).all()
-    return [RoleOut.model_validate(r) for r in rows]
+    out: List[RoleOut] = []
+    for r in rows:
+        n = int(db.scalar(select(func.count()).select_from(User).where(User.role_id == r.id)) or 0)
+        base = RoleOut.model_validate(r)
+        out.append(base.model_copy(update={"user_count": n}))
+    return out
+
+
+@router.get("/{role_id}", response_model=RoleOut)
+def get_role(
+    role_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[
+        User,
+        Depends(require_any_permission("list.role", "action.role.permission", "action.role.update")),
+    ],
+) -> RoleOut:
+    """单条角色（功能授权内页标题等）。"""
+    r = db.get(Role, role_id)
+    if r is None:
+        raise HTTPException(status_code=404, detail="角色不存在")
+    n = int(db.scalar(select(func.count()).select_from(User).where(User.role_id == role_id)) or 0)
+    base = RoleOut.model_validate(r)
+    return base.model_copy(update={"user_count": n})
 
 
 @router.post("", response_model=RoleOut)
@@ -53,7 +76,16 @@ def create_role(
 def get_role_permissions(
     role_id: int,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(require_permission("action.role.permission"))],
+    _: Annotated[
+        User,
+        Depends(
+            require_any_permission(
+                "action.role.permission",
+                "action.user.create",
+                "action.user.update",
+            )
+        ),
+    ],
 ) -> List[str]:
     """查询某角色已授权的功能点编码。"""
     if db.get(Role, role_id) is None:
@@ -101,7 +133,9 @@ def update_role(
         r.description = body.description
     db.commit()
     db.refresh(r)
-    return RoleOut.model_validate(r)
+    n = int(db.scalar(select(func.count()).select_from(User).where(User.role_id == role_id)) or 0)
+    base = RoleOut.model_validate(r)
+    return base.model_copy(update={"user_count": n})
 
 
 @router.delete("/{role_id}", status_code=status.HTTP_204_NO_CONTENT)

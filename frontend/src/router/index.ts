@@ -31,6 +31,12 @@ const router = createRouter({
           meta: { permission: "menu.system.users" },
         },
         {
+          path: "system/roles/:roleId/permissions",
+          name: "role-permissions",
+          component: () => import("@/views/system/RolePermissionPage.vue"),
+          meta: { permission: "action.role.permission", title: "功能授权" },
+        },
+        {
           path: "system/roles",
           name: "system-roles",
           component: () => import("@/views/system/RoleList.vue"),

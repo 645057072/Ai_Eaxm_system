@@ -35,5 +35,6 @@ class RoleOut(BaseModel):
     code: str
     description: Optional[str] = None
     created_at: datetime
+    user_count: int = 0
 
     model_config = {"from_attributes": True}

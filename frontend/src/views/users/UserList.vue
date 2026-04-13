@@ -85,6 +85,64 @@
             <el-option v-for="r in roleOpts" :key="r.id" :label="r.name" :value="r.id" />
           </el-select>
         </el-form-item>
+        <template v-if="!editId && dlg">
+          <el-form-item label="角色功能与数据">
+            <p class="scope-tip">
+              数据范围由「所属企业」与下列已授权功能共同决定；题库、试卷等通常仅本企业数据（超管除外）。
+            </p>
+            <div v-if="rolePreviewLoading" class="muted">加载角色权限...</div>
+            <div v-else-if="!rolePreviewModules.length" class="muted">选择角色后将展示功能树（需具备用户维护或功能授权权限）</div>
+            <div v-else class="preview-panel">
+              <div v-for="mod in rolePreviewModules" :key="mod.moduleKey" class="pv-mod">
+                <div v-if="modHasAny(mod)" class="pv-mod-inner">
+                  <div class="pv-mod-title">{{ mod.moduleTitle }}</div>
+                  <template v-if="pickedMenus(mod).length">
+                    <div class="pv-kind">菜单</div>
+                    <div v-for="m in pickedMenus(mod)" :key="m.code" class="pv-line d1">
+                      <el-checkbox :model-value="true" disabled>{{ m.name }}</el-checkbox>
+                    </div>
+                  </template>
+                  <template v-if="mod.lists.some((row) => pickedListOrFields(row).show)">
+                    <div class="pv-kind">列表</div>
+                    <template v-for="row in mod.lists" :key="row.item.code">
+                      <div v-if="pickedListOrFields(row).show" class="pv-lf">
+                        <div class="pv-line d1">
+                          <el-checkbox :model-value="rolePreviewCodes.includes(row.item.code)" disabled>
+                            {{ row.item.name }}
+                          </el-checkbox>
+                        </div>
+                        <div v-for="f in pickedListOrFields(row).fields" :key="f.code" class="pv-line d2">
+                          <el-checkbox :model-value="true" disabled>{{ f.name }}</el-checkbox>
+                        </div>
+                      </div>
+                    </template>
+                  </template>
+                  <template v-if="mod.forms.some((row) => pickedListOrFields(row).show)">
+                    <div class="pv-kind">表单</div>
+                    <template v-for="row in mod.forms" :key="row.item.code">
+                      <div v-if="pickedListOrFields(row).show" class="pv-lf">
+                        <div class="pv-line d1">
+                          <el-checkbox :model-value="rolePreviewCodes.includes(row.item.code)" disabled>
+                            {{ row.item.name }}
+                          </el-checkbox>
+                        </div>
+                        <div v-for="f in pickedListOrFields(row).fields" :key="f.code" class="pv-line d2">
+                          <el-checkbox :model-value="true" disabled>{{ f.name }}</el-checkbox>
+                        </div>
+                      </div>
+                    </template>
+                  </template>
+                  <template v-if="pickedActions(mod).length">
+                    <div class="pv-kind">操作</div>
+                    <div v-for="a in pickedActions(mod)" :key="a.code" class="pv-line d1">
+                      <el-checkbox :model-value="true" disabled>{{ a.name }}</el-checkbox>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </el-form-item>
+        </template>
         <el-form-item v-if="editId && auth.can('field.user.is_active')" label="启用">
           <el-switch v-model="form.is_active" />
         </el-form-item>
@@ -98,12 +156,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiErrorMessage } from "@/api/http";
 import { listEnterprises } from "@/api/enterprises";
 import { listUsers, createUser, patchUser, deleteUser } from "@/api/users";
-import { listRoles } from "@/api/roles";
+import { listRoles, fetchRolePermissions } from "@/api/roles";
+import { fetchPermissionCatalog, type AuthModulePayload, type CatalogItem } from "@/api/permissions";
 import { useAuthStore } from "@/stores/auth";
 import { systemEmojiRoleKey, type SystemEmojiKey } from "@/assets/emoji/systemEmoji";
 
@@ -133,6 +192,62 @@ const form = reactive({
 });
 const enterpriseOpts = ref<{ id: number; name: string }[]>([]);
 const editEnterpriseName = ref("");
+
+const rolePreviewLoading = ref(false);
+const rolePreviewCodes = ref<string[]>([]);
+const rolePreviewModules = ref<AuthModulePayload[]>([]);
+
+function pickedMenus(mod: AuthModulePayload) {
+  return mod.menus.filter((m) => rolePreviewCodes.value.includes(m.code));
+}
+
+function pickedActions(mod: AuthModulePayload) {
+  return mod.actions.filter((a) => rolePreviewCodes.value.includes(a.code));
+}
+
+function pickedListOrFields(row: { item: CatalogItem; fields: CatalogItem[] }) {
+  const hasList = rolePreviewCodes.value.includes(row.item.code);
+  const fields = row.fields.filter((f) => rolePreviewCodes.value.includes(f.code));
+  return { show: hasList || fields.length > 0, fields };
+}
+
+function modHasAny(mod: AuthModulePayload) {
+  if (pickedMenus(mod).length) return true;
+  if (pickedActions(mod).length) return true;
+  if (mod.lists.some((row) => pickedListOrFields(row).show)) return true;
+  if (mod.forms.some((row) => pickedListOrFields(row).show)) return true;
+  return false;
+}
+
+watch(
+  [() => dlg.value, () => form.role_id, () => editId.value],
+  async ([d, rid, eid]) => {
+    if (!d || eid) {
+      rolePreviewCodes.value = [];
+      rolePreviewModules.value = [];
+      return;
+    }
+    if (!rid) {
+      rolePreviewCodes.value = [];
+      rolePreviewModules.value = [];
+      return;
+    }
+    rolePreviewLoading.value = true;
+    try {
+      const [{ data: codes }, { data: cat }] = await Promise.all([
+        fetchRolePermissions(rid as number),
+        fetchPermissionCatalog(),
+      ]);
+      rolePreviewCodes.value = codes;
+      rolePreviewModules.value = cat.authModules || [];
+    } catch {
+      rolePreviewCodes.value = [];
+      rolePreviewModules.value = [];
+    } finally {
+      rolePreviewLoading.value = false;
+    }
+  },
+);
 
 async function load() {
   try {
@@ -240,5 +355,51 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.scope-tip {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+.muted {
+  font-size: 13px;
+  color: #94a3b8;
+}
+.preview-panel {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fafbfc;
+}
+.pv-mod-inner {
+  margin-bottom: 12px;
+}
+.pv-mod-title {
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.pv-kind {
+  font-size: 11px;
+  color: #94a3b8;
+  margin: 6px 0 2px;
+}
+.pv-line {
+  padding: 2px 0;
+}
+.pv-line.d1 {
+  padding-left: 4px;
+}
+.pv-line.d2 {
+  padding-left: 24px;
+  border-left: 2px solid #e2e8f0;
+  margin-left: 8px;
+}
+.pv-lf {
+  margin-bottom: 6px;
 }
 </style>
