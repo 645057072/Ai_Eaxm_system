@@ -9,7 +9,7 @@
         @keyup.enter="doSearch"
       />
       <el-button type="primary" @click="doSearch"><AppEmoji name="search" size="sm" decorative />查询</el-button>
-      <el-button v-if="auth.can('action.paper_level.manage')" type="success" @click="openCreate"
+      <el-button v-if="auth.can('action.paper_level.manage')" type="success" @click="router.push('/system/paper-level/new')"
         ><AppEmoji name="add" size="sm" decorative />新建等级</el-button
       >
     </div>
@@ -34,7 +34,9 @@
       </el-table-column>
       <el-table-column v-if="auth.can('action.paper_level.manage')" label="操作" width="160" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)"><AppEmoji name="edit" size="sm" decorative />编辑</el-button>
+          <el-button link type="primary" @click="router.push('/system/paper-level/' + row.id + '/edit')"
+            ><AppEmoji name="edit" size="sm" decorative />编辑</el-button
+          >
           <el-button link type="danger" @click="onDelete(row)"><AppEmoji name="delete" size="sm" decorative />删除</el-button>
         </template>
       </el-table-column>
@@ -48,61 +50,25 @@
         @current-change="(p: number) => { page = p; load(); }"
       />
     </div>
-
-    <el-dialog v-model="dlg" :title="editId ? '编辑试卷等级' : '新建试卷等级'" width="520px">
-      <el-form label-width="100px">
-        <el-form-item v-if="!editId && auth.isAdmin" label="所属企业" required>
-          <el-select v-model="form.enterprise_id" placeholder="请选择企业" filterable style="width: 100%">
-            <el-option v-for="e in enterpriseOpts" :key="e.id" :label="e.name" :value="e.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="editId" label="所属企业">
-          <el-input :model-value="editEnterpriseName" disabled />
-        </el-form-item>
-        <el-form-item label="等级编号" required>
-          <el-input v-model="form.level_code" placeholder="等级编号" />
-        </el-form-item>
-        <el-form-item label="等级名称" required>
-          <el-input v-model="form.level_name" placeholder="等级名称" />
-        </el-form-item>
-        <el-form-item label="职称系列" required>
-          <el-input v-model="form.title_series" placeholder="职称系列" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dlg = false">取消</el-button>
-        <el-button type="primary" @click="save">保存</el-button>
-      </template>
-    </el-dialog>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiErrorMessage } from "@/api/http";
-import { listEnterprises } from "@/api/enterprises";
-import { listPaperLevels, createPaperLevel, patchPaperLevel, deletePaperLevel } from "@/api/paper_levels";
+import { listPaperLevels, deletePaperLevel } from "@/api/paper_levels";
 import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
+const router = useRouter();
 
 const rows = ref<Record<string, unknown>[]>([]);
 const total = ref(0);
 const page = ref(1);
 const limit = ref(20);
 const searchKeyword = ref("");
-const dlg = ref(false);
-const editId = ref<number | null>(null);
-const enterpriseOpts = ref<{ id: number; name: string }[]>([]);
-const editEnterpriseName = ref("");
-
-const form = reactive({
-  enterprise_id: undefined as number | undefined,
-  level_code: "",
-  level_name: "",
-  title_series: "",
-});
 
 function fmtTime(v: unknown) {
   if (!v) return "";
@@ -124,55 +90,6 @@ function doSearch() {
   load();
 }
 
-async function openCreate() {
-  editId.value = null;
-  form.level_code = "";
-  form.level_name = "";
-  form.title_series = "";
-  form.enterprise_id = enterpriseOpts.value[0]?.id;
-  dlg.value = true;
-}
-
-function openEdit(row: Record<string, unknown>) {
-  editId.value = row.id as number;
-  form.level_code = row.level_code as string;
-  form.level_name = row.level_name as string;
-  form.title_series = row.title_series as string;
-  editEnterpriseName.value = (row.enterprise_name as string) || "";
-  dlg.value = true;
-}
-
-async function save() {
-  try {
-    if (!editId.value) {
-      const body: Record<string, unknown> = {
-        level_code: form.level_code,
-        level_name: form.level_name,
-        title_series: form.title_series,
-      };
-      if (auth.isAdmin) {
-        if (!form.enterprise_id) {
-          ElMessage.warning("请选择所属企业");
-          return;
-        }
-        body.enterprise_id = form.enterprise_id;
-      }
-      await createPaperLevel(body);
-    } else {
-      await patchPaperLevel(editId.value, {
-        level_code: form.level_code,
-        level_name: form.level_name,
-        title_series: form.title_series,
-      });
-    }
-    ElMessage.success("已保存");
-    dlg.value = false;
-    await load();
-  } catch (e) {
-    ElMessage.error(apiErrorMessage(e, "保存失败"));
-  }
-}
-
 async function onDelete(row: Record<string, unknown>) {
   await ElMessageBox.confirm("确定删除该试卷等级？", "提示", { type: "warning" });
   try {
@@ -184,13 +101,7 @@ async function onDelete(row: Record<string, unknown>) {
   }
 }
 
-onMounted(async () => {
-  if (auth.isAdmin) {
-    const { data } = await listEnterprises({ skip: 0, limit: 500 });
-    enterpriseOpts.value = (data.items || []) as { id: number; name: string }[];
-  }
-  await load();
-});
+onMounted(load);
 </script>
 
 <style scoped>

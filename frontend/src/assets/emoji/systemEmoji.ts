@@ -46,6 +46,10 @@ export const SYSTEM_EMOJI = {
   /** 用户管理子菜单 */
   userInfo: "\u{1F464}",
   rolePerm: "\u{1F512}",
+  /** 题库 / 试卷档案子菜单（图形仅在此映射维护，业务代码只引用键名） */
+  questionManage: "\u{1F9E0}",
+  paperLevel: "\u{1F3C6}",
+  paperManage: "\u{1F4C3}",
 } as const;
 
 export type SystemEmojiKey = keyof typeof SYSTEM_EMOJI;

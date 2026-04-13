@@ -7,6 +7,9 @@
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="paper_no" label="试卷编号" width="150" show-overflow-tooltip />
       <el-table-column prop="title" label="试卷名称" min-width="140" show-overflow-tooltip />
+      <el-table-column label="所属企业" min-width="120" show-overflow-tooltip>
+        <template #default="{ row }">{{ (row.enterprise_name as string) || "—" }}</template>
+      </el-table-column>
       <el-table-column label="课程" min-width="120" show-overflow-tooltip>
         <template #default="{ row }">{{ (row.course_name as string) || "—" }}</template>
       </el-table-column>
@@ -35,19 +38,60 @@
       />
     </div>
 
-    <el-dialog v-model="dlg" title="新建试卷" width="820px" top="6vh">
+    <el-dialog v-model="dlg" title="新建试卷" width="860px" top="5vh" @closed="onDlgClosed">
       <el-form label-width="120px">
-        <el-form-item label="试卷名称" required>
-          <el-input v-model="form.title" placeholder="试卷名称" />
+        <el-form-item v-if="auth.isAdmin" label="所属企业" required>
+          <el-select
+            v-model="form.enterprise_id"
+            placeholder="请选择企业（与企业信息一致，再选课程）"
+            filterable
+            style="width: 100%"
+            @change="onEnterpriseChange"
+          >
+            <el-option v-for="e in enterpriseOpts" :key="e.id" :label="e.name" :value="e.id" />
+          </el-select>
         </el-form-item>
-        <el-form-item label="试卷编号">
-          <el-input v-model="form.paper_no" clearable placeholder="留空则自动生成" />
+        <el-form-item v-else label="所属企业">
+          <el-input :model-value="auth.me?.enterprise?.name || '—'" disabled />
         </el-form-item>
+
+        <el-form-item label="组卷方式">
+          <el-radio-group v-model="createMode">
+            <el-radio-button value="single">单套组卷</el-radio-button>
+            <el-radio-button value="batch">多套批量</el-radio-button>
+          </el-radio-group>
+          <span class="hint">多套：按各题型「总量」自动均分到各套，题目互不重复</span>
+        </el-form-item>
+
         <el-form-item label="关联课程" required>
-          <el-select v-model="form.course_id" placeholder="选择课程（组卷题库区间）" filterable style="width: 100%">
+          <el-select
+            v-model="form.course_id"
+            placeholder="选择课程（请先选企业）"
+            filterable
+            style="width: 100%"
+            :disabled="auth.isAdmin && !form.enterprise_id"
+          >
             <el-option v-for="c in courseOpts" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
+
+        <template v-if="createMode === 'single'">
+          <el-form-item label="试卷名称" required>
+            <el-input v-model="form.title" placeholder="试卷名称" />
+          </el-form-item>
+          <el-form-item label="试卷编号">
+            <el-input v-model="form.paper_no" clearable placeholder="留空则自动生成" />
+          </el-form-item>
+        </template>
+        <template v-else>
+          <el-form-item label="试卷名称前缀" required>
+            <el-input v-model="batchForm.base_title" placeholder="多套时自动加「第N套」" />
+          </el-form-item>
+          <el-form-item label="生成套数" required>
+            <el-input-number v-model="batchForm.paper_count" :min="1" :max="50" />
+          </el-form-item>
+        </template>
+
         <el-form-item label="试卷类型">
           <el-select v-model="form.paper_type" style="width: 100%">
             <el-option label="正式" value="formal" />
@@ -66,48 +110,73 @@
         <el-form-item label="时长(分)">
           <el-input-number v-model="form.duration_minutes" :min="1" :max="600" />
         </el-form-item>
-        <el-divider content-position="left">按题型抽题（题库区间为所选课程下已发布题目）</el-divider>
-        <div class="rules-toolbar">
-          <el-button type="primary" link @click="addRuleRow">增加题型行</el-button>
-        </div>
-        <el-table :data="ruleRows" border size="small" class="rules-table">
-          <el-table-column label="题型" width="120">
-            <template #default="{ row }">
-              <el-select v-model="row.q_type" placeholder="题型" style="width: 100%">
-                <el-option v-for="o in qTypeOpts" :key="o.value" :label="o.label" :value="o.value" />
-              </el-select>
-            </template>
-          </el-table-column>
-          <el-table-column label="全选" width="72" align="center">
-            <template #default="{ row }">
-              <el-checkbox v-model="row.use_all" />
-            </template>
-          </el-table-column>
-          <el-table-column label="数量" width="100">
-            <template #default="{ row }">
-              <el-input-number v-model="row.count" :min="0" :disabled="row.use_all" controls-position="right" style="width: 100%" />
-            </template>
-          </el-table-column>
-          <el-table-column label="自动拆分" width="110">
-            <template #default="{ row }">
-              <el-input-number v-model="row.auto_split" :min="1" controls-position="right" style="width: 100%" />
-            </template>
-          </el-table-column>
-          <el-table-column label="单题分值" width="110">
-            <template #default="{ row }">
-              <el-input-number v-model="row.score_per" :min="0" :step="0.5" controls-position="right" style="width: 100%" />
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="80" align="center">
-            <template #default="{ $index }">
-              <el-button type="danger" link :disabled="ruleRows.length <= 1" @click="removeRuleRow($index)">删</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+
+        <template v-if="createMode === 'single'">
+          <el-divider content-position="left">按题型抽题（题库区间为所选课程下已发布题目）</el-divider>
+          <div class="rules-toolbar">
+            <el-button type="primary" link @click="addRuleRow">增加题型行</el-button>
+          </div>
+          <el-table :data="ruleRows" border size="small" class="rules-table">
+            <el-table-column label="题型" width="120">
+              <template #default="{ row }">
+                <el-select v-model="row.q_type" placeholder="题型" style="width: 100%">
+                  <el-option v-for="o in qTypeOpts" :key="o.value" :label="o.label" :value="o.value" />
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column label="全选" width="72" align="center">
+              <template #default="{ row }">
+                <el-checkbox v-model="row.use_all" />
+              </template>
+            </el-table-column>
+            <el-table-column label="数量" width="100">
+              <template #default="{ row }">
+                <el-input-number v-model="row.count" :min="0" :disabled="row.use_all" controls-position="right" style="width: 100%" />
+              </template>
+            </el-table-column>
+            <el-table-column label="自动拆分" width="110">
+              <template #default="{ row }">
+                <el-input-number v-model="row.auto_split" :min="1" controls-position="right" style="width: 100%" />
+              </template>
+            </el-table-column>
+            <el-table-column label="单题分值" width="110">
+              <template #default="{ row }">
+                <el-input-number v-model="row.score_per" :min="0" :step="0.5" controls-position="right" style="width: 100%" />
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="80" align="center">
+              <template #default="{ $index }">
+                <el-button type="danger" link :disabled="ruleRows.length <= 1" @click="removeRuleRow($index)">删</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </template>
+
+        <template v-else>
+          <el-divider content-position="left">题型总量（将自动均分到各套；各套之间题目不重复）</el-divider>
+          <el-table :data="batchRuleRows" border size="small" class="rules-table">
+            <el-table-column label="题型" width="120">
+              <template #default="{ row }">
+                <span>{{ qTypeLabel(row.q_type) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="题型总量" min-width="140">
+              <template #default="{ row }">
+                <el-input-number v-model="row.total_count" :min="0" controls-position="right" style="width: 100%" />
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-form-item label="自动拆分" class="mt12">
+            <el-input-number v-model="batchForm.auto_split" :min="1" />
+          </el-form-item>
+          <el-form-item label="单题分值">
+            <el-input-number v-model="batchForm.score_per" :min="0" :step="0.5" />
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="dlg = false">取消</el-button>
-        <el-button type="primary" @click="saveCreate">创建</el-button>
+        <el-button type="primary" @click="createMode === 'single' ? saveCreate() : saveBatch()">创建</el-button>
       </template>
     </el-dialog>
   </el-card>
@@ -117,17 +186,24 @@
 import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { listPapers, createPaper, deletePaper } from "@/api/papers";
+import { listPapers, createPaper, createPapersBatch, deletePaper } from "@/api/papers";
 import { listCourses } from "@/api/courses";
 import { listPaperLevels } from "@/api/paper_levels";
+import { listEnterprises } from "@/api/enterprises";
+import { useAuthStore } from "@/stores/auth";
 
+const auth = useAuthStore();
 const router = useRouter();
 const rows = ref<Record<string, unknown>[]>([]);
 const total = ref(0);
 const page = ref(1);
 const limit = ref(20);
 const dlg = ref(false);
+const createMode = ref<"single" | "batch">("single");
+
+const enterpriseOpts = ref<{ id: number; name: string }[]>([]);
 const form = reactive({
+  enterprise_id: undefined as number | undefined,
   title: "",
   paper_no: "",
   course_id: undefined as number | undefined,
@@ -135,6 +211,13 @@ const form = reactive({
   level_id: undefined as number | undefined,
   description: "",
   duration_minutes: 60,
+});
+
+const batchForm = reactive({
+  base_title: "",
+  paper_count: 3,
+  auto_split: 1,
+  score_per: 1,
 });
 
 const courseOpts = ref<{ id: number; name: string }[]>([]);
@@ -147,6 +230,10 @@ const qTypeOpts = [
   { value: "fill", label: "填空" },
 ];
 
+function qTypeLabel(q: string) {
+  return qTypeOpts.find((o) => o.value === q)?.label || q;
+}
+
 interface RuleRow {
   q_type: string;
   use_all: boolean;
@@ -155,17 +242,21 @@ interface RuleRow {
   score_per: number;
 }
 
+interface BatchRuleRow {
+  q_type: string;
+  total_count: number;
+}
+
 function defaultRuleRow(): RuleRow {
-  return {
-    q_type: "single",
-    use_all: false,
-    count: 5,
-    auto_split: 1,
-    score_per: 1,
-  };
+  return { q_type: "single", use_all: false, count: 5, auto_split: 1, score_per: 1 };
+}
+
+function defaultBatchRuleRows(): BatchRuleRow[] {
+  return qTypeOpts.map((o) => ({ q_type: o.value, total_count: 0 }));
 }
 
 const ruleRows = ref<RuleRow[]>([defaultRuleRow()]);
+const batchRuleRows = ref<BatchRuleRow[]>(defaultBatchRuleRows());
 
 async function load() {
   const skip = (page.value - 1) * limit.value;
@@ -174,24 +265,61 @@ async function load() {
   rows.value = data.items;
 }
 
-async function loadOpts() {
-  const [cRes, lRes] = await Promise.all([
-    listCourses({ skip: 0, limit: 500 }),
-    listPaperLevels({ skip: 0, limit: 500 }),
-  ]);
-  courseOpts.value = (cRes.data.items || []) as { id: number; name: string }[];
-  levelOpts.value = (lRes.data.items || []) as { id: number; level_name: string; level_code: string }[];
+async function reloadCoursesForEnterprise(eid: number | undefined) {
+  const params: Record<string, unknown> = { skip: 0, limit: 500 };
+  if (auth.isAdmin && eid) {
+    params.enterprise_id = eid;
+  }
+  try {
+    const { data } = await listCourses(params);
+    courseOpts.value = (data.items || []) as { id: number; name: string }[];
+    if (!courseOpts.value.some((c) => c.id === form.course_id)) {
+      form.course_id = courseOpts.value[0]?.id;
+    }
+  } catch {
+    courseOpts.value = [];
+    form.course_id = undefined;
+  }
+}
+
+async function loadPaperLevelsOnly() {
+  try {
+    const { data } = await listPaperLevels({ skip: 0, limit: 500 });
+    levelOpts.value = (data.items || []) as { id: number; level_name: string; level_code: string }[];
+  } catch {
+    levelOpts.value = [];
+  }
+}
+
+function onEnterpriseChange() {
+  void reloadCoursesForEnterprise(form.enterprise_id);
+}
+
+function onDlgClosed() {
+  createMode.value = "single";
 }
 
 function openCreate() {
+  createMode.value = "single";
   form.title = "";
   form.paper_no = "";
-  form.course_id = courseOpts.value[0]?.id;
   form.paper_type = "formal";
   form.level_id = undefined;
   form.description = "";
   form.duration_minutes = 60;
+  batchForm.base_title = "";
+  batchForm.paper_count = 3;
+  batchForm.auto_split = 1;
+  batchForm.score_per = 1;
   ruleRows.value = [defaultRuleRow()];
+  batchRuleRows.value = defaultBatchRuleRows();
+  if (auth.isAdmin) {
+    form.enterprise_id = enterpriseOpts.value[0]?.id;
+    void reloadCoursesForEnterprise(form.enterprise_id);
+  } else {
+    form.enterprise_id = auth.me?.enterprise_id ?? undefined;
+    void reloadCoursesForEnterprise(undefined);
+  }
   dlg.value = true;
 }
 
@@ -211,6 +339,10 @@ async function saveCreate() {
   }
   if (!form.course_id) {
     ElMessage.warning("请选择关联课程");
+    return;
+  }
+  if (auth.isAdmin && !form.enterprise_id) {
+    ElMessage.warning("请选择所属企业");
     return;
   }
   const rulesPayload = ruleRows.value
@@ -251,6 +383,48 @@ async function saveCreate() {
   }
 }
 
+async function saveBatch() {
+  if (!batchForm.base_title.trim()) {
+    ElMessage.warning("请填写试卷名称前缀");
+    return;
+  }
+  if (!form.course_id) {
+    ElMessage.warning("请选择关联课程");
+    return;
+  }
+  if (auth.isAdmin && !form.enterprise_id) {
+    ElMessage.warning("请选择所属企业");
+    return;
+  }
+  const rules = batchRuleRows.value
+    .filter((r) => r.total_count > 0)
+    .map((r) => ({ q_type: r.q_type, total_count: r.total_count }));
+  if (!rules.length) {
+    ElMessage.warning("请至少为一种题型填写大于0 的总量");
+    return;
+  }
+  try {
+    const { data } = await createPapersBatch({
+      base_title: batchForm.base_title.trim(),
+      paper_count: batchForm.paper_count,
+      course_id: form.course_id,
+      paper_type: form.paper_type,
+      level_id: form.level_id || null,
+      description: form.description.trim() || null,
+      duration_minutes: form.duration_minutes,
+      rules,
+      auto_split: batchForm.auto_split,
+      score_per: batchForm.score_per,
+    });
+    const n = (data.items as unknown[])?.length ?? 0;
+    ElMessage.success(`已生成 ${n} 套试卷`);
+    dlg.value = false;
+    await load();
+  } catch {
+    ElMessage.error("批量创建失败（请检查各题型总量与题库是否足够，且套数不宜过大导致某套分不到题）");
+  }
+}
+
 async function onDel(row: Record<string, unknown>) {
   await ElMessageBox.confirm("确定删除该试卷？", "提示", { type: "warning" });
   await deletePaper(row.id as number);
@@ -259,7 +433,15 @@ async function onDel(row: Record<string, unknown>) {
 }
 
 onMounted(async () => {
-  await loadOpts();
+  if (auth.isAdmin) {
+    try {
+      const { data } = await listEnterprises({ skip: 0, limit: 500 });
+      enterpriseOpts.value = (data.items || []) as { id: number; name: string }[];
+    } catch {
+      enterpriseOpts.value = [];
+    }
+  }
+  await loadPaperLevelsOnly();
   await load();
 });
 </script>
@@ -278,5 +460,13 @@ onMounted(async () => {
 }
 .rules-table {
   margin-bottom: 8px;
+}
+.hint {
+  margin-left: 12px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+.mt12 {
+  margin-top: 12px;
 }
 </style>

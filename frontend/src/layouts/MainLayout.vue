@@ -17,7 +17,7 @@
             <span class="menu-item-inner"><AppEmoji name="questionBank" size="sm" decorative />题库中心</span>
           </template>
           <el-menu-item v-if="auth.can('menu.exam.question_manage')" index="/questions">
-            <span class="menu-item-inner">题库管理</span>
+            <span class="menu-item-inner"><AppEmoji name="questionManage" size="sm" decorative />题库管理</span>
           </el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="auth.canAny('menu.exam.paper_manage', 'menu.exam.paper_publish')" index="exam-paper-archive">
@@ -25,10 +25,10 @@
             <span class="menu-item-inner"><AppEmoji name="papers" size="sm" decorative />试卷档案</span>
           </template>
           <el-menu-item v-if="auth.can('menu.exam.paper_manage')" index="/papers">
-            <span class="menu-item-inner">试卷管理</span>
+            <span class="menu-item-inner"><AppEmoji name="paperManage" size="sm" decorative />试卷管理</span>
           </el-menu-item>
           <el-menu-item v-if="auth.can('menu.exam.paper_publish')" index="/papers/publish">
-            <span class="menu-item-inner">试卷发布</span>
+            <span class="menu-item-inner"><AppEmoji name="publish" size="sm" decorative />试卷发布</span>
           </el-menu-item>
         </el-sub-menu>
         <el-menu-item v-if="auth.can('menu.exam.sessions')" index="/sessions">
@@ -86,7 +86,7 @@
               <span class="menu-item-inner"><AppEmoji name="course" size="sm" decorative />课程信息</span>
             </el-menu-item>
             <el-menu-item v-if="auth.can('menu.system.paper_level')" index="/system/paper-level">
-              <span class="menu-item-inner">试卷等级</span>
+              <span class="menu-item-inner"><AppEmoji name="paperLevel" size="sm" decorative />试卷等级</span>
             </el-menu-item>
           </el-sub-menu>
           <el-sub-menu

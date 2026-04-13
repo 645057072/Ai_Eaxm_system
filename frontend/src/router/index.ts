@@ -97,6 +97,18 @@ const router = createRouter({
           meta: { permission: "menu.system.course", title: "课程信息" },
         },
         {
+          path: "system/paper-level/new",
+          name: "paper-level-new",
+          component: () => import("@/views/system/PaperLevelForm.vue"),
+          meta: { permission: "menu.system.paper_level", title: "新建试卷等级" },
+        },
+        {
+          path: "system/paper-level/:id/edit",
+          name: "paper-level-edit",
+          component: () => import("@/views/system/PaperLevelForm.vue"),
+          meta: { permission: "menu.system.paper_level", title: "编辑试卷等级" },
+        },
+        {
           path: "system/paper-level",
           name: "system-paper-level",
           component: () => import("@/views/system/PaperLevelList.vue"),

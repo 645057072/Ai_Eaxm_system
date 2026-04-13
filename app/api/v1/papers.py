@@ -17,6 +17,8 @@ from app.models.paper_level import PaperLevel
 from app.models.user import User
 from app.schemas.common import PageParams, PageResult
 from app.schemas.paper import (
+    PaperBatchCreate,
+    PaperBatchOut,
     PaperCreate,
     PaperItemAdd,
     PaperItemOut,
@@ -31,6 +33,7 @@ from app.services.data_scope import (
     ensure_same_enterprise,
     restrict_query_by_creator_enterprise,
 )
+from app.services.paper_batch import build_disjoint_chunks_for_type, merge_items_in_rule_order
 from app.services.paper_compose import fetch_question_pool_ids, pick_questions_for_rule, rules_to_jsonable
 
 router = APIRouter()
@@ -63,7 +66,17 @@ def _recalc_total_score(db: Session, paper_id: int) -> None:
         db.add(paper)
 
 
+def _enterprise_for_paper(p: ExamPaper) -> tuple[int | None, str | None]:
+    """所属企业：优先取关联课程的企业，否则取创建人所属企业。"""
+    if p.course is not None and p.course.enterprise is not None:
+        return p.course.enterprise_id, p.course.enterprise.name
+    if p.creator is not None and p.creator.enterprise is not None:
+        return p.creator.enterprise_id, p.creator.enterprise.name
+    return None, None
+
+
 def _paper_summary(p: ExamPaper) -> PaperSummary:
+    eid, ename = _enterprise_for_paper(p)
     return PaperSummary(
         id=p.id,
         title=p.title,
@@ -73,6 +86,8 @@ def _paper_summary(p: ExamPaper) -> PaperSummary:
         paper_type=p.paper_type or "formal",
         level_id=p.level_id,
         level_name=p.paper_level.level_name if p.paper_level else None,
+        enterprise_id=eid,
+        enterprise_name=ename,
         description=p.description,
         duration_minutes=p.duration_minutes,
         total_score=p.total_score,
@@ -97,12 +112,131 @@ def list_papers(
             select(ExamPaper).join(User, ExamPaper.created_by == User.id),
             current,
         )
-        .options(joinedload(ExamPaper.course), joinedload(ExamPaper.paper_level))
+        .options(
+            joinedload(ExamPaper.course).joinedload(Course.enterprise),
+            joinedload(ExamPaper.paper_level),
+            joinedload(ExamPaper.creator).joinedload(User.enterprise),
+        )
         .offset(page.skip)
         .limit(page.limit)
         .order_by(ExamPaper.id.desc())
     ).all()
     return PageResult[PaperSummary](total=int(total), items=[_paper_summary(r) for r in rows])
+
+
+@router.post("/batch", response_model=PaperBatchOut)
+def create_papers_batch(
+    body: PaperBatchCreate,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[User, Depends(require_permission("action.paper.manage"))],
+) -> PaperBatchOut:
+    """按题型总量自动均分并一次生成多套试卷（各套题目不重复）。"""
+    course = db.get(Course, body.course_id)
+    if course is None:
+        raise HTTPException(status_code=404, detail="课程不存在")
+    if not is_super_role(current):
+        ensure_same_enterprise(current, course.enterprise_id)
+
+    if body.level_id is not None:
+        pl = db.get(PaperLevel, body.level_id)
+        if pl is None:
+            raise HTTPException(status_code=404, detail="试卷等级不存在")
+        if not is_super_role(current):
+            ensure_same_enterprise(current, pl.enterprise_id)
+        if pl.enterprise_id != course.enterprise_id:
+            raise HTTPException(status_code=400, detail="试卷等级与课程须属同一企业")
+
+    ent_pool = course.enterprise_id
+    type_chunks: dict[str, list[list[int]]] = {}
+    rule_order = [r.q_type for r in body.rules if r.total_count > 0]
+    for r in body.rules:
+        if r.total_count <= 0:
+            continue
+        type_chunks[r.q_type] = build_disjoint_chunks_for_type(
+            db,
+            course_id=course.id,
+            enterprise_id=ent_pool,
+            q_type=r.q_type,
+            total=r.total_count,
+            paper_count=body.paper_count,
+        )
+    for i in range(body.paper_count):
+        tot_i = sum(len(type_chunks[qt][i]) for qt in type_chunks)
+        if tot_i < 1:
+            raise HTTPException(
+                status_code=400,
+                detail="各套试卷至少需包含 1 道题，请减少生成份数或提高某题型的总量",
+            )
+    per_paper_items = merge_items_in_rule_order(
+        type_chunks, rule_order, body.paper_count, body.score_per, body.auto_split
+    )
+    summaries: list[PaperSummary] = []
+    batch_meta = {
+        "batch": True,
+        "paper_count": body.paper_count,
+        "totals": [{"q_type": r.q_type, "total_count": r.total_count} for r in body.rules],
+    }
+    for i in range(body.paper_count):
+        title = (
+            f"{body.base_title.strip()} 第{i + 1}套"
+            if body.paper_count > 1
+            else body.base_title.strip()
+        )
+        pn = _gen_paper_no(db, ent_pool)
+        items_spec = per_paper_items[i]
+        rules_snapshot: list[dict] = []
+        for qt in rule_order:
+            chunk = type_chunks[qt][i]
+            if chunk:
+                rules_snapshot.append(
+                    {
+                        "q_type": qt,
+                        "use_all": False,
+                        "count": len(chunk),
+                        "auto_split": body.auto_split,
+                        "score_per": str(body.score_per),
+                    }
+                )
+        composition_rules = {**batch_meta, "paper_index": i, "rules_this_paper": rules_snapshot}
+        p = ExamPaper(
+            title=title,
+            paper_no=pn,
+            course_id=body.course_id,
+            paper_type=(body.paper_type or "formal").strip(),
+            level_id=body.level_id,
+            composition_rules=composition_rules,
+            description=body.description,
+            duration_minutes=body.duration_minutes,
+            total_score=Decimal("0"),
+            created_by=current.id,
+        )
+        db.add(p)
+        db.flush()
+        for idx, (qid, score, auto_split) in enumerate(items_spec):
+            db.add(
+                ExamPaperItem(
+                    paper_id=p.id,
+                    question_id=qid,
+                    sort_order=idx,
+                    score=score,
+                    auto_split_count=auto_split,
+                )
+            )
+        if items_spec:
+            _recalc_total_score(db, p.id)
+        db.commit()
+        pr = db.scalars(
+            select(ExamPaper)
+            .options(
+                joinedload(ExamPaper.course).joinedload(Course.enterprise),
+                joinedload(ExamPaper.paper_level),
+                joinedload(ExamPaper.creator).joinedload(User.enterprise),
+            )
+            .where(ExamPaper.id == p.id)
+        ).first()
+        if pr is not None:
+            summaries.append(_paper_summary(pr))
+    return PaperBatchOut(items=summaries)
 
 
 @router.post("", response_model=PaperOut)

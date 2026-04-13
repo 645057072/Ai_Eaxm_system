@@ -12,6 +12,10 @@ export function createPaper(body: Record<string, unknown>) {
   return http.post("/v1/papers", body);
 }
 
+export function createPapersBatch(body: Record<string, unknown>) {
+  return http.post("/v1/papers/batch", body);
+}
+
 export function updatePaper(id: number, body: Record<string, unknown>) {
   return http.patch(`/v1/papers/${id}`, body);
 }

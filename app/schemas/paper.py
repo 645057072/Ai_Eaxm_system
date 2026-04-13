@@ -36,6 +36,8 @@ class PaperSummary(BaseModel):
     paper_type: str = "formal"
     level_id: Optional[int] = None
     level_name: Optional[str] = None
+    enterprise_id: Optional[int] = None
+    enterprise_name: Optional[str] = None
     description: Optional[str] = None
     duration_minutes: int
     total_score: Decimal
@@ -104,3 +106,36 @@ class PaperItemAdd(BaseModel):
     sort_order: int = Field(0, ge=0)
     score: Decimal = Field(Decimal("1.00"), ge=Decimal("0"))
     auto_split_count: int = Field(1, ge=1)
+
+
+class PaperBatchRule(BaseModel):
+    """批量组卷：某题型在全部套卷中的题目总量（自动均分到各套）。"""
+
+    q_type: str = Field(..., min_length=1, max_length=16)
+    total_count: int = Field(..., ge=0)
+
+
+class PaperBatchCreate(BaseModel):
+    base_title: str = Field(..., min_length=1, max_length=200, description="试卷名称前缀；多套时自动加「第N套」")
+    paper_count: int = Field(..., ge=1, le=50, description="生成试卷套数")
+    course_id: int = Field(..., ge=1)
+    paper_type: str = Field("formal", max_length=32)
+    level_id: Optional[int] = None
+    description: Optional[str] = None
+    duration_minutes: int = Field(60, ge=1, le=600)
+    rules: List[PaperBatchRule] = Field(..., min_length=1)
+    auto_split: int = Field(1, ge=1)
+    score_per: Decimal = Field(Decimal("1"), ge=0)
+
+    @model_validator(mode="after")
+    def _nonzero_totals(self) -> "PaperBatchCreate":
+        if sum(r.total_count for r in self.rules) < 1:
+            raise ValueError("至少一种题型的总量须大于 0")
+        qs = [r.q_type for r in self.rules if r.total_count > 0]
+        if len(qs) != len(set(qs)):
+            raise ValueError("同一题型只能配置一行（请合并题型总量）")
+        return self
+
+
+class PaperBatchOut(BaseModel):
+    items: List[PaperSummary]
