@@ -67,10 +67,10 @@ services:
         VITE_API_BASE: /api
     ports:
       - "80:80"
-    # 仅等待 api 容器已启动，不要求 healthy，避免迁移慢时 web 永远无法启动（此前会报 dependency failed）
+    # 等 API 通过 /health 后再起 Nginx，避免冷启动迁移期间反代到未监听的端口导致 502
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   mysql_data:

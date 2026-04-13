@@ -15,5 +15,7 @@ until alembic upgrade head; do
   sleep 3
 done
 
-python scripts/seed_data.py
+# 种子脚本报错时不阻塞 API 启动（否则会话层 502）；上线后请根据日志补数据
+python scripts/seed_data.py || echo "警告: seed_data 执行失败，API 仍将启动，请检查 docker logs api"
+
 exec "$@"
