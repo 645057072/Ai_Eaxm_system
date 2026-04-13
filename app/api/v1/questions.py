@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.orm import Session, joinedload
+
+logger = logging.getLogger(__name__)
 
 from app.api.deps import get_db, require_any_permission, require_permission
 from app.core.permissions import is_super_role
@@ -61,7 +64,7 @@ def list_questions(
     q_type: str | None = None,
     status: str | None = None,
     course_id: int | None = None,
-    stem_keyword: Annotated[str | None, Query(description="题干模糊匹配")] = None,
+    stem_keyword: str | None = Query(default=None, description="题干模糊匹配"),
 ) -> PageResult[QuestionOut]:
     """题目列表。"""
     sk = (stem_keyword or "").strip()
@@ -206,7 +209,7 @@ async def import_questions(
             status_code=409,
             detail="题号或唯一约束冲突（可能重复导入），请刷新后重试",
         ) from e
-    except OperationalError as e:
+    except (OperationalError, ProgrammingError) as e:
         db.rollback()
         orig = getattr(e, "orig", None)
         msg = str(orig) if orig is not None else str(e)
@@ -218,6 +221,7 @@ async def import_questions(
         raise HTTPException(status_code=503, detail=f"数据库错误：{msg}") from e
     except Exception as e:
         db.rollback()
+        logger.exception("题库导入失败")
         raise HTTPException(status_code=500, detail=f"导入失败：{e!s}") from e
     return QuestionImportResult(created=created, message=f"已导入 {created} 道题目草稿")
 

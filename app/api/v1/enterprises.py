@@ -38,7 +38,7 @@ def list_enterprises(
         Depends(require_any_permission("list.enterprise", "list.question")),
     ],
     page: Annotated[PageParams, Depends()],
-    keyword: Annotated[str | None, Query(description="模糊匹配企业名称")] = None,
+    keyword: str | None = Query(default=None, description="模糊匹配企业名称"),
 ) -> PageResult[EnterpriseOut]:
     """企业档案：超管查看全部；其余用户仅本企业。支持 keyword 模糊搜索。"""
     q = (keyword or "").strip()

@@ -226,6 +226,7 @@ import { ArrowDown } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { listCourses } from "@/api/courses";
 import { listEnterprises } from "@/api/enterprises";
+import { apiErrorMessage } from "@/api/http";
 import {
   listQuestions,
   createQuestion,
@@ -515,8 +516,8 @@ async function submitImport() {
     ElMessage.success((data as { message?: string }).message || "导入完成");
     importDlg.value = false;
     await load();
-  } catch {
-    ElMessage.error("导入失败");
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "导入失败"));
   } finally {
     importLoading.value = false;
   }
