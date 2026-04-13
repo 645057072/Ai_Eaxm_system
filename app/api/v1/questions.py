@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_db, require_any_permission, require_permission
@@ -141,39 +142,83 @@ async def import_questions(
     fn = file.filename or "upload"
     ext = (fn.rsplit(".", 1)[-1] if "." in fn else "").lower()
     image_ext = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
-    if ext in image_ext:
-        items = [build_image_placeholder(fn)]
-    else:
-        try:
-            text = extract_plain_text(fn, raw)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-        if not text.strip():
+    try:
+        if ext in image_ext:
             items = [build_image_placeholder(fn)]
         else:
-            items = build_questions_from_text(text)
-    if not items:
-        raise HTTPException(status_code=400, detail="未能从文件中解析出题目")
-    created = 0
-    for it in items:
-        qn = allocate_question_no(db, enterprise_id, course_id, it["q_type"])
-        obj = Question(
-            question_no=qn,
-            q_type=it["q_type"],
-            stem=it["stem"],
-            options_json=it.get("options_json"),
-            answer_json=it["answer_json"],
-            analysis=it.get("analysis"),
-            difficulty=1,
-            status="draft",
-            course_id=course_id,
-            enterprise_id=enterprise_id,
-            created_by=current.id,
-        )
-        db.add(obj)
-        db.flush()
-        created += 1
-    db.commit()
+            try:
+                text = extract_plain_text(fn, raw)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e)) from e
+            except ModuleNotFoundError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"服务端未安装解析依赖「{e.name}」。"
+                        "请在 api 容器内执行 pip install -r requirements.txt（需含 pypdf、openpyxl、python-docx）后重建镜像。"
+                    ),
+                ) from e
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"读取或解析文件失败：{e!s}") from e
+            if not text.strip():
+                items = [build_image_placeholder(fn)]
+            else:
+                try:
+                    items = build_questions_from_text(text)
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=f"题目文本切分失败：{e!s}") from e
+        if not items:
+            raise HTTPException(status_code=400, detail="未能从文件中解析出题目")
+        created = 0
+        for it in items:
+            stem = (it.get("stem") or "").strip()
+            if not stem:
+                continue
+            if len(stem) > 2000:
+                stem = stem[:2000]
+            q_type = it.get("q_type") or "single"
+            qn = allocate_question_no(db, enterprise_id, course_id, q_type)
+            obj = Question(
+                question_no=qn,
+                q_type=q_type,
+                stem=stem,
+                options_json=it.get("options_json"),
+                answer_json=it["answer_json"] if it.get("answer_json") is not None else {"choice": "A"},
+                analysis=it.get("analysis"),
+                difficulty=1,
+                status="draft",
+                course_id=course_id,
+                enterprise_id=enterprise_id,
+                created_by=current.id,
+            )
+            db.add(obj)
+            db.flush()
+            created += 1
+        if created == 0:
+            raise HTTPException(status_code=400, detail="解析结果中无有效题干，请检查文件是否为题目格式或换源文件重试")
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="题号或唯一约束冲突（可能重复导入），请刷新后重试",
+        ) from e
+    except OperationalError as e:
+        db.rollback()
+        orig = getattr(e, "orig", None)
+        msg = str(orig) if orig is not None else str(e)
+        if "question_no" in msg or "Unknown column" in msg:
+            raise HTTPException(
+                status_code=503,
+                detail="数据库结构未升级：请在服务器执行 alembic upgrade head（含 question_no 字段）后重试",
+            ) from e
+        raise HTTPException(status_code=503, detail=f"数据库错误：{msg}") from e
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"导入失败：{e!s}") from e
     return QuestionImportResult(created=created, message=f"已导入 {created} 道题目草稿")
 
 

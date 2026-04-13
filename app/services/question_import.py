@@ -263,9 +263,13 @@ def build_questions_from_text(text: str) -> List[Dict[str, Any]]:
     blocks = _split_blocks(text)
     out: List[Dict[str, Any]] = []
     for b in blocks:
-        item = parse_question_block(b)
-        if item:
-            out.append(item)
+        try:
+            item = parse_question_block(b)
+            if item:
+                out.append(item)
+        except Exception:
+            # 单块解析异常不拖垮整份文件
+            continue
     return out
 
 
