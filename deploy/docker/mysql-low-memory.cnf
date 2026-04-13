@@ -1,0 +1,13 @@
+# 小内存 ECS（约 1～2GB）下调低 MySQL 8 占用，减少被 OOM Killer 终止（容器退出码 137）。
+# 内存充足时可从 docker-compose.yml 中去掉本文件挂载，恢复镜像默认配置。
+
+[mysqld]
+character-set-server=utf8mb4
+collation-server=utf8mb4_unicode_ci
+performance_schema=OFF
+innodb_buffer_pool_size=64M
+innodb_redo_log_capacity=33554432
+max_connections=80
+table_open_cache=200
+thread_cache_size=8
+skip-log-bin

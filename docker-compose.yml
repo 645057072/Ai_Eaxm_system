@@ -16,7 +16,9 @@ services:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      # 低内存调优（见 deploy/docker/mysql-low-memory.cnf）；退出码 137 多为宿主机 OOM。
+      # 若机器内存 ≥4GB 且希望默认性能，可删除下一行挂载。
+      - ./deploy/docker/mysql-low-memory.cnf:/etc/mysql/conf.d/low-memory.cnf:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
       interval: 5s
