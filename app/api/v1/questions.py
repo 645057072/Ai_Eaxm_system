@@ -29,7 +29,7 @@ from app.schemas.question import (
     QuestionOut,
     QuestionUpdate,
 )
-from app.services.data_scope import assert_question_in_enterprise, restrict_query_by_creator_enterprise
+from app.services.data_scope import assert_question_in_enterprise, restrict_questions_query_by_tenant
 from app.services.question_number import allocate_question_no
 from app.services.question_dedup import compute_question_dedup_hash, find_duplicate_question_id
 from app.services.question_import import (
@@ -99,11 +99,11 @@ def list_questions(
     stem_like = _stem_like(stem_keyword)
 
     stmt = select(func.count()).select_from(Question).join(User, Question.created_by == User.id)
-    stmt = restrict_query_by_creator_enterprise(stmt, current)
+    stmt = restrict_questions_query_by_tenant(stmt, current)
     stmt = _apply_question_list_filters(stmt, q_type, status, course_id, stem_like)
     total = db.scalar(stmt) or 0
     q = select(Question).join(User, Question.created_by == User.id)
-    q = restrict_query_by_creator_enterprise(q, current)
+    q = restrict_questions_query_by_tenant(q, current)
     q = _apply_question_list_filters(q, q_type, status, course_id, stem_like)
     q = q.options(joinedload(Question.course), joinedload(Question.enterprise))
     rows = db.scalars(q.offset(page.skip).limit(page.limit).order_by(Question.id.desc())).all()
@@ -430,7 +430,7 @@ def get_question_neighbors(
     assert_question_in_enterprise(db, current, question_id)
     stem_like = _stem_like(stem_keyword)
     q = select(Question.id).join(User, Question.created_by == User.id)
-    q = restrict_query_by_creator_enterprise(q, current)
+    q = restrict_questions_query_by_tenant(q, current)
     q = _apply_question_list_filters(q, q_type, status, course_id, stem_like)
     q = q.order_by(Question.id.desc())
     ids = list(db.scalars(q).all())

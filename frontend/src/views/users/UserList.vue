@@ -285,29 +285,71 @@ function openEdit(row: Record<string, unknown>) {
 async function save() {
   try {
     if (!editId.value) {
-      if (!form.username || !form.password) {
+      const username = (form.username || "").trim();
+      const password = form.password || "";
+      if (!username || !password) {
         ElMessage.warning("请填写用户名和密码");
         return;
       }
-      if (auth.isAdmin && (form.enterprise_id == null || form.enterprise_id < 1)) {
-        ElMessage.warning("请选择所属企业");
+      if (username.length < 2) {
+        ElMessage.warning("用户名至少 2 个字符");
+        return;
+      }
+      if (password.length < 6) {
+        ElMessage.warning("密码至少 6 位");
+        return;
+      }
+      const fn = (form.full_name || "").trim();
+      if (fn.length > 64) {
+        ElMessage.warning("姓名最长 64 个字符");
+        return;
+      }
+      const roleIdNum = Number(form.role_id);
+      if (!Number.isFinite(roleIdNum) || roleIdNum < 1) {
+        ElMessage.warning("请选择有效角色");
+        return;
+      }
+      let enterpriseIdNum: number | undefined;
+      if (auth.isAdmin) {
+        const raw = form.enterprise_id;
+        const n = raw == null ? NaN : Number(raw);
+        if (!Number.isFinite(n) || n < 1) {
+          ElMessage.warning("请选择所属企业");
+          return;
+        }
+        enterpriseIdNum = n;
+      }
+      const body: Record<string, unknown> = {
+        username,
+        password,
+        full_name: fn || null,
+        role_id: roleIdNum,
+      };
+      if (auth.isAdmin && enterpriseIdNum != null) body.enterprise_id = enterpriseIdNum;
+      await createUser(body);
+    } else {
+      const fn = (form.full_name || "").trim();
+      if (fn.length > 64) {
+        ElMessage.warning("姓名最长 64 个字符");
+        return;
+      }
+      const roleIdNum = Number(form.role_id);
+      if (!Number.isFinite(roleIdNum) || roleIdNum < 1) {
+        ElMessage.warning("请选择有效角色");
         return;
       }
       const body: Record<string, unknown> = {
-        username: form.username,
-        password: form.password,
-        full_name: form.full_name || null,
-        role_id: form.role_id,
-      };
-      if (auth.isAdmin) body.enterprise_id = form.enterprise_id;
-      await createUser(body);
-    } else {
-      const body: Record<string, unknown> = {
-        full_name: form.full_name || null,
-        role_id: form.role_id,
+        full_name: fn || null,
+        role_id: roleIdNum,
         is_active: form.is_active,
       };
-      if (form.password) body.password = form.password;
+      if (form.password) {
+        if (form.password.length < 6) {
+          ElMessage.warning("新密码至少 6 位");
+          return;
+        }
+        body.password = form.password;
+      }
       await patchUser(editId.value, body);
     }
     ElMessage.success("已保存");

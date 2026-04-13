@@ -4,10 +4,11 @@
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import false
+from sqlalchemy import and_, false, or_
 from sqlalchemy.orm import Session
 
 from app.core.permissions import is_super_role
+from app.models.course import Course
 from app.models.exam import ExamPaper, ExamSession
 from app.models.question import Question
 from app.models.user import User
@@ -38,6 +39,34 @@ def restrict_query_by_creator_enterprise(query: Any, current: User, user_model: 
     return query.where(user_model.enterprise_id == current.enterprise_id)
 
 
+def restrict_questions_query_by_tenant(query: Any, current: User, creator_user: type[User] = User) -> Any:
+    """题目列表：优先按题目 enterprise_id 归属本企业；旧数据 enterprise_id 为空时按创建者企业（与录入权限一致）。"""
+    if is_super_role(current):
+        return query
+    if current.enterprise_id is None:
+        return query.where(false())
+    return query.where(
+        or_(
+            Question.enterprise_id == current.enterprise_id,
+            and_(Question.enterprise_id.is_(None), creator_user.enterprise_id == current.enterprise_id),
+        )
+    )
+
+
+def restrict_exam_paper_query_by_tenant(query: Any, current: User, creator_user: type[User] = User) -> Any:
+    """试卷列表：有关联课程时按课程所属企业；无课程时按创建者企业。避免超管代录导致本企业用户列表为空。"""
+    if is_super_role(current):
+        return query
+    if current.enterprise_id is None:
+        return query.where(false())
+    return query.where(
+        or_(
+            Course.enterprise_id == current.enterprise_id,
+            and_(ExamPaper.course_id.is_(None), creator_user.enterprise_id == current.enterprise_id),
+        )
+    )
+
+
 def _creator_enterprise(db: Session, user_id: int | None) -> int | None:
     if user_id is None:
         return None
@@ -51,6 +80,12 @@ def assert_question_in_enterprise(db: Session, current: User, question_id: int) 
         raise HTTPException(status_code=404, detail="题目不存在")
     if is_super_role(current):
         return obj
+    if current.enterprise_id is None:
+        raise HTTPException(status_code=403, detail="账号未关联企业")
+    if obj.enterprise_id is not None:
+        if obj.enterprise_id != current.enterprise_id:
+            raise HTTPException(status_code=403, detail="题目不在本企业范围内")
+        return obj
     ce = _creator_enterprise(db, obj.created_by)
     if ce is None or ce != current.enterprise_id:
         raise HTTPException(status_code=403, detail="题目不在本企业范围内")
@@ -63,10 +98,16 @@ def assert_paper_in_enterprise(db: Session, current: User, paper_id: int) -> Exa
         raise HTTPException(status_code=404, detail="试卷不存在")
     if is_super_role(current):
         return p
+    if current.enterprise_id is None:
+        raise HTTPException(status_code=403, detail="账号未关联企业")
+    if p.course_id is not None:
+        c = db.get(Course, p.course_id)
+        if c is not None and c.enterprise_id == current.enterprise_id:
+            return p
     ce = _creator_enterprise(db, p.created_by)
-    if ce is None or ce != current.enterprise_id:
-        raise HTTPException(status_code=403, detail="试卷不在本企业范围内")
-    return p
+    if ce is not None and ce == current.enterprise_id:
+        return p
+    raise HTTPException(status_code=403, detail="试卷不在本企业范围内")
 
 
 def assert_session_in_enterprise(db: Session, current: User, session_id: int) -> ExamSession:
@@ -75,7 +116,5 @@ def assert_session_in_enterprise(db: Session, current: User, session_id: int) ->
         raise HTTPException(status_code=404, detail="场次不存在")
     if is_super_role(current):
         return s
-    ce = _creator_enterprise(db, s.created_by)
-    if ce is None or ce != current.enterprise_id:
-        raise HTTPException(status_code=403, detail="考试场次不在本企业范围内")
+    assert_paper_in_enterprise(db, current, s.paper_id)
     return s

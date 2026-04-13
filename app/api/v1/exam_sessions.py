@@ -5,22 +5,19 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.api.deps import get_db, require_any_permission, require_permission
 from app.core.permissions import is_super_role
+from app.models.course import Course
 from app.models.exam import ExamAttempt, ExamPaper, ExamPaperItem, ExamSession
 from app.models.user import User
 from app.schemas.attempt import AttemptStartOut
 from app.schemas.common import PageParams, PageResult
 from app.schemas.exam_take import TakeDataOut, TakeQuestionItem
 from app.schemas.session import ExamSessionCreate, ExamSessionOut, ExamSessionUpdate
-from app.services.data_scope import (
-    assert_paper_in_enterprise,
-    assert_session_in_enterprise,
-    restrict_query_by_creator_enterprise,
-)
+from app.services.data_scope import assert_paper_in_enterprise, assert_session_in_enterprise
 
 router = APIRouter()
 
@@ -44,22 +41,31 @@ def list_available_for_student(
         ExamSession.start_at <= now,
         ExamSession.end_at >= now,
     ]
+    PaperCreator = aliased(User)
     if not is_super_role(current):
         if current.enterprise_id is None:
             return PageResult[ExamSessionOut](total=0, items=[])
-        conds.append(User.enterprise_id == current.enterprise_id)
+        tenant_or = or_(
+            Course.enterprise_id == current.enterprise_id,
+            and_(ExamPaper.course_id.is_(None), PaperCreator.enterprise_id == current.enterprise_id),
+        )
+        conds.append(tenant_or)
     total = (
         db.scalar(
             select(func.count())
             .select_from(ExamSession)
-            .join(User, ExamSession.created_by == User.id)
+            .join(ExamPaper, ExamSession.paper_id == ExamPaper.id)
+            .outerjoin(Course, ExamPaper.course_id == Course.id)
+            .outerjoin(PaperCreator, ExamPaper.created_by == PaperCreator.id)
             .where(*conds)
         )
         or 0
     )
     rows = db.scalars(
         select(ExamSession)
-        .join(User, ExamSession.created_by == User.id)
+        .join(ExamPaper, ExamSession.paper_id == ExamPaper.id)
+        .outerjoin(Course, ExamPaper.course_id == Course.id)
+        .outerjoin(PaperCreator, ExamPaper.created_by == PaperCreator.id)
         .where(*conds)
         .order_by(ExamSession.id.desc())
         .offset(page.skip)
@@ -76,13 +82,39 @@ def list_sessions(
     status: str | None = None,
 ) -> PageResult[ExamSessionOut]:
     """本企业场次列表。"""
-    stmt = select(func.count()).select_from(ExamSession).join(User, ExamSession.created_by == User.id)
-    stmt = restrict_query_by_creator_enterprise(stmt, current)
+    PaperCreator = aliased(User)
+    stmt = (
+        select(func.count())
+        .select_from(ExamSession)
+        .join(ExamPaper, ExamSession.paper_id == ExamPaper.id)
+        .outerjoin(Course, ExamPaper.course_id == Course.id)
+        .outerjoin(PaperCreator, ExamPaper.created_by == PaperCreator.id)
+    )
+    if not is_super_role(current):
+        if current.enterprise_id is None:
+            return PageResult[ExamSessionOut](total=0, items=[])
+        stmt = stmt.where(
+            or_(
+                Course.enterprise_id == current.enterprise_id,
+                and_(ExamPaper.course_id.is_(None), PaperCreator.enterprise_id == current.enterprise_id),
+            )
+        )
     if status:
         stmt = stmt.where(ExamSession.status == status)
     total = db.scalar(stmt) or 0
-    q = select(ExamSession).join(User, ExamSession.created_by == User.id)
-    q = restrict_query_by_creator_enterprise(q, current)
+    q = (
+        select(ExamSession)
+        .join(ExamPaper, ExamSession.paper_id == ExamPaper.id)
+        .outerjoin(Course, ExamPaper.course_id == Course.id)
+        .outerjoin(PaperCreator, ExamPaper.created_by == PaperCreator.id)
+    )
+    if not is_super_role(current):
+        q = q.where(
+            or_(
+                Course.enterprise_id == current.enterprise_id,
+                and_(ExamPaper.course_id.is_(None), PaperCreator.enterprise_id == current.enterprise_id),
+            )
+        )
     if status:
         q = q.where(ExamSession.status == status)
     rows = db.scalars(q.offset(page.skip).limit(page.limit).order_by(ExamSession.id.desc())).all()

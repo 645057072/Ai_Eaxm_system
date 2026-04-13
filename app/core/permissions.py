@@ -38,6 +38,24 @@ def permission_match(granted: Set[str], code: str) -> bool:
         return True
     if code.startswith("field.course.") and ("form.course" in granted or "list.course" in granted):
         return True
+    if code.startswith("field.question.") and (
+        "form.question" in granted
+        or "list.question" in granted
+        or "form.question_import" in granted
+        or "form.question_batch" in granted
+        or "action.question.manage" in granted
+        or "action.question.import" in granted
+        or "action.question.batch" in granted
+    ):
+        return True
+    if code.startswith("field.paper.") and (
+        "form.paper" in granted or "list.paper" in granted or "action.paper.manage" in granted
+    ):
+        return True
+    if code.startswith("field.session.") and (
+        "form.session" in granted or "list.session" in granted or "action.session.manage" in granted
+    ):
+        return True
     return False
 
 

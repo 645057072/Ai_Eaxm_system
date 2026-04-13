@@ -31,7 +31,7 @@ from app.services.data_scope import (
     assert_paper_in_enterprise,
     assert_question_in_enterprise,
     ensure_same_enterprise,
-    restrict_query_by_creator_enterprise,
+    restrict_exam_paper_query_by_tenant,
 )
 from app.services.paper_batch import build_disjoint_chunks_for_type, merge_items_in_rule_order
 from app.services.paper_compose import fetch_question_pool_ids, pick_questions_for_rule, rules_to_jsonable
@@ -104,12 +104,19 @@ def list_papers(
     page: Annotated[PageParams, Depends()],
 ) -> PageResult[PaperSummary]:
     """本企业试卷列表。"""
-    cnt = select(func.count()).select_from(ExamPaper).join(User, ExamPaper.created_by == User.id)
-    cnt = restrict_query_by_creator_enterprise(cnt, current)
+    cnt = (
+        select(func.count())
+        .select_from(ExamPaper)
+        .join(User, ExamPaper.created_by == User.id)
+        .outerjoin(Course, ExamPaper.course_id == Course.id)
+    )
+    cnt = restrict_exam_paper_query_by_tenant(cnt, current)
     total = db.scalar(cnt) or 0
     rows = db.scalars(
-        restrict_query_by_creator_enterprise(
-            select(ExamPaper).join(User, ExamPaper.created_by == User.id),
+        restrict_exam_paper_query_by_tenant(
+            select(ExamPaper)
+            .join(User, ExamPaper.created_by == User.id)
+            .outerjoin(Course, ExamPaper.course_id == Course.id),
             current,
         )
         .options(

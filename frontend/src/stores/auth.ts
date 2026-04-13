@@ -44,6 +44,31 @@ export const useAuthStore = defineStore("auth", () => {
       (perms.includes("form.course") || perms.includes("list.course"))
     )
       return true;
+    if (
+      code.startsWith("field.question.") &&
+      (perms.includes("form.question") ||
+        perms.includes("list.question") ||
+        perms.includes("form.question_import") ||
+        perms.includes("form.question_batch") ||
+        perms.includes("action.question.manage") ||
+        perms.includes("action.question.import") ||
+        perms.includes("action.question.batch"))
+    )
+      return true;
+    if (
+      code.startsWith("field.paper.") &&
+      (perms.includes("form.paper") ||
+        perms.includes("list.paper") ||
+        perms.includes("action.paper.manage"))
+    )
+      return true;
+    if (
+      code.startsWith("field.session.") &&
+      (perms.includes("form.session") ||
+        perms.includes("list.session") ||
+        perms.includes("action.session.manage"))
+    )
+      return true;
     return false;
   }
 
