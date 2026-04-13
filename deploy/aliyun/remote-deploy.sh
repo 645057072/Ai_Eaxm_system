@@ -23,6 +23,10 @@ if [[ -f .env ]]; then
   source .env
   set +a
 fi
+# 空 DATABASE_URL 被导出时，compose 的 ${DATABASE_URL:-默认} 仍可能注入空串，导致容器内连接异常
+if [[ -z "${DATABASE_URL:-}" ]]; then
+  unset DATABASE_URL || true
+fi
 
 echo "[deploy] docker compose up -d --build"
 docker compose up -d --build

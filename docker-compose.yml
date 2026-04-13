@@ -42,6 +42,7 @@ services:
         PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-pypi.tuna.tsinghua.edu.cn}
     restart: unless-stopped
     environment:
+      # 勿在宿主机 .env 写 DATABASE_URL= 空行；若用 RDS 请写完整内网地址。默认使用 compose 内服务名 mysql（须与 api 同网络）。
       DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://exam:exam@mysql:3306/exam_db?charset=utf8mb4}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       SECRET_KEY: ${SECRET_KEY:-change-me-docker-demo-only}
