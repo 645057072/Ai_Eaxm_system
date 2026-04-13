@@ -55,13 +55,14 @@ services:
     # 仅本机可访问，便于在 ECS 上 curl 调试：curl -s http://127.0.0.1:8000/health
     ports:
       - "127.0.0.1:8000:8000"
-    # 使用独立脚本 + 超时，避免 ECS 上冷启动/迁移较慢时误判 unhealthy
+    # 探活走 /health（轻量）；DB 在 entrypoint 的 wait_for_db + alembic 已验证，避免 /health/ready
+    # 偶发连库慢导致 api 长期 unhealthy、web 无法 depends_on。
     healthcheck:
       test: ["CMD", "python", "/app/scripts/docker_healthcheck.py"]
       interval: 15s
-      timeout: 12s
+      timeout: 15s
       retries: 25
-      start_period: 300s
+      start_period: 120s
     depends_on:
       mysql:
         condition: service_healthy
@@ -79,7 +80,7 @@ services:
         VITE_API_BASE: /api
     ports:
       - "80:80"
-    # 等 API 通过 /health 后再起 Nginx，避免冷启动迁移期间反代到未监听的端口导致 502
+    # 等 API 健康检查通过后再起 Nginx，避免冷启动迁移期间反代到未监听的端口导致 502
     depends_on:
       api:
         condition: service_healthy

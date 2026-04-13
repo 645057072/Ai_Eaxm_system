@@ -32,11 +32,11 @@ def health() -> dict:
 
 @app.get("/health/ready")
 def health_ready() -> dict:
-    """就绪探活：确认数据库可连；Docker healthcheck 与排障用。"""
+    """就绪探活：确认数据库可连；负载均衡深度探活或排障用（Compose 默认用 /health）。"""
     from app.db.session import engine
 
     try:
-        with engine.connect() as conn:
+        with engine.begin() as conn:
             conn.execute(text("SELECT 1"))
     except Exception as e:
         raise HTTPException(
