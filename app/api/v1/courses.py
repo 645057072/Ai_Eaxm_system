@@ -27,8 +27,8 @@ def list_courses(
         Depends(require_any_permission("list.course", "list.question")),
     ],
     page: Annotated[PageParams, Depends()],
-    keyword: Annotated[str | None, Query(None, description="模糊匹配课程名称、讲师、所属企业")] = None,
-    enterprise_id: Annotated[int | None, Query(None, description="仅返回该企业下的课程（题库等场景）")] = None,
+    keyword: Annotated[str | None, Query(description="模糊匹配课程名称、讲师、所属企业")] = None,
+    enterprise_id: Annotated[int | None, Query(description="仅返回该企业下的课程（题库等场景）")] = None,
 ) -> PageResult[CourseOut]:
     """课程列表：超管全部；其余用户仅本企业。支持 keyword 模糊搜索。"""
     if not is_super_role(current) and current.enterprise_id is None:

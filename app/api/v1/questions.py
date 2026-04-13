@@ -58,7 +58,7 @@ def list_questions(
     q_type: str | None = None,
     status: str | None = None,
     course_id: int | None = None,
-    stem_keyword: Annotated[str | None, Query(None, description="题干模糊匹配")] = None,
+    stem_keyword: Annotated[str | None, Query(description="题干模糊匹配")] = None,
 ) -> PageResult[QuestionOut]:
     """题目列表。"""
     sk = (stem_keyword or "").strip()
