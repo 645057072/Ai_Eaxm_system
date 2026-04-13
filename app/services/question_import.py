@@ -82,6 +82,91 @@ def _truncate_stem(s: str) -> str:
     return s[:STEM_MAX_LEN]
 
 
+def _normalize_import_text(text: str) -> str:
+    """导入前规范化换行，减轻 PDF 抽字粘连。"""
+    t = text.replace("\r\n", "\n").replace("\r", "\n")
+    # 「理论部分」与页码粘连：理论部分2 -> 理论部分\n2
+    t = re.sub(r"(理论部分)(\d{1,3})(?=\s*\n|[一二三四五六七八九十百千])", r"\1\n\2", t)
+    return t
+
+
+def _classify_section_header_line(ln: str) -> Optional[str]:
+    """识别章节行：一、单选题 / 二、多选题 等，返回题型。"""
+    s = ln.strip()
+    if not re.match(r"^[一二三四五六七八九十百千]+[、．.]", s):
+        return None
+    if "多选" in s or "多项选择" in s:
+        return "multiple"
+    if "单选" in s or "单项" in s:
+        return "single"
+    if "判断" in s:
+        return "judge"
+    if "填空" in s:
+        return "fill"
+    return None
+
+
+def _extract_sections_from_block(block: str, section: Optional[str]) -> Tuple[str, Optional[str]]:
+    """移除块内章节标题行，并更新当前章节题型（封面与「一、单选题」可同块）。"""
+    lines = block.splitlines()
+    sec = section
+    kept: List[str] = []
+    for ln in lines:
+        hit = _classify_section_header_line(ln)
+        if hit:
+            sec = hit
+            continue
+        kept.append(ln)
+    return "\n".join(kept).strip(), sec
+
+
+def _strip_stem_cover_lines(stem: str) -> str:
+    """去掉题干前封面、独立页码行、章节标题行等噪声。"""
+    lines = stem.splitlines()
+    out: List[str] = []
+    started = False
+    for ln in lines:
+        st = ln.strip()
+        if not started:
+            if not st:
+                continue
+            if re.match(r"^生成式\s*AI\s*工程师", st):
+                continue
+            if re.match(r"^理论部分", st):
+                continue
+            if re.match(r"^\d{1,3}$", st):
+                continue
+            if _classify_section_header_line(st):
+                continue
+            started = True
+        out.append(ln)
+    return "\n".join(out).strip()
+
+
+def _strip_leading_qnums(stem: str) -> str:
+    """去掉题干行首题号（可多层，如 1. 或 1、）。"""
+    s = stem.strip()
+    while True:
+        ns = re.sub(r"^\s*\d{1,3}[\.\)、]\s*", "", s, count=1)
+        if ns == s:
+            break
+        s = ns
+    return s.strip()
+
+
+def _clean_answer_raw(s: str) -> str:
+    """去掉答案文本尾部粘连的页码等，如「正确118」「B12」误判场景尽量少误伤。"""
+    s = (s or "").strip()
+    if not s:
+        return s
+    # 判断题常见：正确/错误 后粘连 1～3 位数字
+    s = re.sub(r"(正确|错误|对|错)([。．]?\s*)(\d{1,3})\s*$", r"\1\2", s)
+    # 选择题单个字母后粘连页码
+    if re.match(r"^[A-Ea-e](\d{1,3})\s*$", s):
+        s = re.sub(r"^([A-Ea-e])\d{1,3}\s*$", r"\1", s)
+    return s.strip()
+
+
 def _crop_analysis_body(raw: str) -> str:
     """截取「解析」正文，遇下一题题号或下一道答案行时截断，避免误吞整卷。"""
     if not raw:
@@ -134,7 +219,7 @@ def _split_answer_analysis(text: str) -> Tuple[str, Optional[str], Optional[str]
     # 再去掉「答案：」单行
     m_a = re.search(r"(?:^|\n)\s*(?:答案|标准答案)[：:]\s*([^\n]+)", t)
     if m_a:
-        aw = m_a.group(1).strip()
+        aw = _clean_answer_raw(m_a.group(1))
         t = t[: m_a.start()].strip()
     return t, aw, an
 
@@ -149,7 +234,7 @@ def _parse_answer_to_json(ans: Optional[str], q_type: str) -> Any:
         if q_type == "fill":
             return {"text": ""}
         return {"choice": "A"}
-    s = str(ans).strip()
+    s = _clean_answer_raw(str(ans))
     if q_type == "multiple":
         keys = re.findall(r"[A-E]", s.upper())
         return {"choices": keys if keys else ["A"]}
@@ -200,8 +285,11 @@ def _infer_qtype(stem_core: str, opts: List[Dict[str, str]], hint: str) -> str:
 def _is_noise_block(block: str) -> bool:
     """非题目说明、章节标题等不入库。"""
     t = block.strip()
-    if len(t) < 12:
+    if len(t) < 8:
         return True
+    # 含答案行的一般为有效题目（含判断题无 A/B 选项）
+    if re.search(r"(?:答案|标准答案)[：:]", t):
+        return False
     # 仅「一、单选题」类标题
     if re.match(r"^[一二三四五六七八九十百千]+[、．.].{0,40}$", t) and "？" not in t and "?" not in t:
         return True
@@ -221,21 +309,40 @@ def _split_blocks(text: str) -> List[str]:
     t = text.strip()
     if not t:
         return []
-    # 按空行或「行首题号+内容」切题
-    parts = re.split(r"(?:\n\s*){2,}|(?=\n\s*\d{1,3}[\.\)、]\s)", t)
+    # 按空行或「行首题号」切题；题号后可为空格或直接跟中文（PDF 常见 2.以下）
+    q_anchor = r"(?=\n\s*\d{1,3}[\.\)、])"
+    parts = re.split(r"(?:\n\s*){2,}|" + q_anchor, t)
     out = [p.strip() for p in parts if p.strip()]
     if len(out) <= 1 and "\n" in t:
-        parts2 = re.split(r"(?=\n\s*\d{1,3}[\.\)、]\s)", t)
+        parts2 = re.split(q_anchor, t)
         out = [p.strip() for p in parts2 if p.strip()]
     return out if out else [t]
 
 
-def _strip_leading_qnum(s: str) -> str:
-    """去掉行首题号如 1. 2、"""
-    return re.sub(r"^\s*\d{1,3}[\.\)、]\s*", "", s.strip(), count=1)
+def _apply_section_hint(
+    stem_core: str,
+    opts: List[Dict[str, str]],
+    hint: str,
+    section_hint: Optional[str],
+) -> str:
+    """结合卷面章节（一、单选题 / 二、多选题 等）确定题型。"""
+    base = _infer_qtype(stem_core, opts, hint)
+    has_ab_options = len(opts) >= 2 and bool(re.search(r"[A-E][\.．、]\s*\S", hint))
+    if section_hint == "judge":
+        # 判断题通常无 A/B 选项行；若仍有选项则按题干推断，避免章节状态错位把单选/多选判成判断
+        if not has_ab_options:
+            return "judge"
+        return base
+    if section_hint == "fill":
+        return "fill"
+    if section_hint == "multiple" and len(opts) >= 2:
+        return "multiple"
+    if section_hint == "single" and len(opts) >= 2:
+        return "single"
+    return base
 
 
-def parse_question_block(block: str) -> Optional[Dict[str, Any]]:
+def parse_question_block(block: str, section_hint: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """解析单题：题干不含答案/解析；答案与解析分字段。"""
     if _is_noise_block(block):
         return None
@@ -245,9 +352,10 @@ def parse_question_block(block: str) -> Optional[Dict[str, Any]]:
         return None
     opts, stem_lines = _parse_option_lines(lines)
     stem_core = "\n".join(stem_lines).strip()
-    stem_core = _strip_leading_qnum(stem_core)
+    stem_core = _strip_stem_cover_lines(stem_core)
+    stem_core = _strip_leading_qnums(stem_core)
     hint = body
-    q_type = _infer_qtype(stem_core, opts, hint)
+    q_type = _apply_section_hint(stem_core, opts, hint, section_hint)
 
     if q_type == "fill":
         stem = _truncate_stem(stem_core if stem_core else body[:STEM_MAX_LEN])
@@ -301,11 +409,16 @@ def parse_question_block(block: str) -> Optional[Dict[str, Any]]:
 
 
 def build_questions_from_text(text: str) -> List[Dict[str, Any]]:
-    blocks = _split_blocks(text)
+    t = _normalize_import_text(text)
+    blocks = _split_blocks(t)
     out: List[Dict[str, Any]] = []
+    section: Optional[str] = None
     for b in blocks:
+        b2, section = _extract_sections_from_block(b, section)
+        if not b2.strip():
+            continue
         try:
-            item = parse_question_block(b)
+            item = parse_question_block(b2, section_hint=section)
             if item:
                 out.append(item)
         except Exception:

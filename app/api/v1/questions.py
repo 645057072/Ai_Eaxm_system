@@ -21,6 +21,7 @@ from app.schemas.question import (
     QuestionBatchPublishIn,
     QuestionCreate,
     QuestionImportResult,
+    QuestionNeighborsOut,
     QuestionOut,
     QuestionUpdate,
 )
@@ -57,6 +58,29 @@ def _to_out(obj: Question) -> QuestionOut:
     )
 
 
+def _stem_like(stem_keyword: str | None) -> str | None:
+    sk = (stem_keyword or "").strip()
+    return f"%{sk}%" if sk else None
+
+
+def _apply_question_list_filters(
+    stmt,
+    q_type: str | None,
+    status: str | None,
+    course_id: int | None,
+    stem_like: str | None,
+):
+    if q_type:
+        stmt = stmt.where(Question.q_type == q_type)
+    if status:
+        stmt = stmt.where(Question.status == status)
+    if course_id is not None:
+        stmt = stmt.where(Question.course_id == course_id)
+    if stem_like is not None:
+        stmt = stmt.where(Question.stem.like(stem_like))
+    return stmt
+
+
 @router.get("", response_model=PageResult[QuestionOut])
 def list_questions(
     db: Annotated[Session, Depends(get_db)],
@@ -68,30 +92,15 @@ def list_questions(
     stem_keyword: str | None = Query(default=None, description="题干模糊匹配"),
 ) -> PageResult[QuestionOut]:
     """题目列表。"""
-    sk = (stem_keyword or "").strip()
-    stem_like = f"%{sk}%" if sk else None
+    stem_like = _stem_like(stem_keyword)
 
     stmt = select(func.count()).select_from(Question).join(User, Question.created_by == User.id)
     stmt = restrict_query_by_creator_enterprise(stmt, current)
-    if q_type:
-        stmt = stmt.where(Question.q_type == q_type)
-    if status:
-        stmt = stmt.where(Question.status == status)
-    if course_id is not None:
-        stmt = stmt.where(Question.course_id == course_id)
-    if stem_like is not None:
-        stmt = stmt.where(Question.stem.like(stem_like))
+    stmt = _apply_question_list_filters(stmt, q_type, status, course_id, stem_like)
     total = db.scalar(stmt) or 0
     q = select(Question).join(User, Question.created_by == User.id)
     q = restrict_query_by_creator_enterprise(q, current)
-    if q_type:
-        q = q.where(Question.q_type == q_type)
-    if status:
-        q = q.where(Question.status == status)
-    if course_id is not None:
-        q = q.where(Question.course_id == course_id)
-    if stem_like is not None:
-        q = q.where(Question.stem.like(stem_like))
+    q = _apply_question_list_filters(q, q_type, status, course_id, stem_like)
     q = q.options(joinedload(Question.course), joinedload(Question.enterprise))
     rows = db.scalars(q.offset(page.skip).limit(page.limit).order_by(Question.id.desc())).all()
     return PageResult[QuestionOut](total=int(total), items=[_to_out(r) for r in rows])
@@ -257,6 +266,42 @@ def create_question(
         .where(Question.id == obj.id)
     ).first()
     return _to_out(obj)
+
+
+@router.get("/{question_id}/neighbors", response_model=QuestionNeighborsOut)
+def get_question_neighbors(
+    question_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[
+        User,
+        Depends(require_any_permission("list.question", "action.question.manage")),
+    ],
+    q_type: str | None = None,
+    status: str | None = None,
+    course_id: int | None = None,
+    stem_keyword: str | None = Query(default=None, description="与题目列表查询条件一致"),
+) -> QuestionNeighborsOut:
+    """当前筛选条件下，同一排序（id 降序）中的上一题/下一题 id。"""
+    assert_question_in_enterprise(db, current, question_id)
+    stem_like = _stem_like(stem_keyword)
+    q = select(Question.id).join(User, Question.created_by == User.id)
+    q = restrict_query_by_creator_enterprise(q, current)
+    q = _apply_question_list_filters(q, q_type, status, course_id, stem_like)
+    q = q.order_by(Question.id.desc())
+    ids = list(db.scalars(q).all())
+    try:
+        idx = ids.index(question_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=404,
+            detail="当前筛选条件下未包含该题目，请调整筛选或与列表条件一致后再试",
+        ) from None
+    return QuestionNeighborsOut(
+        prev_id=ids[idx - 1] if idx > 0 else None,
+        next_id=ids[idx + 1] if idx < len(ids) - 1 else None,
+        index=idx,
+        total=len(ids),
+    )
 
 
 @router.get("/{question_id}", response_model=QuestionOut)

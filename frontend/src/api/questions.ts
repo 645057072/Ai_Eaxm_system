@@ -8,6 +8,11 @@ export function getQuestion(id: number) {
   return http.get(`/v1/questions/${id}`);
 }
 
+/** 与列表筛选一致时的上一题/下一题 id（排序与列表相同） */
+export function getQuestionNeighbors(id: number, params?: Record<string, unknown>) {
+  return http.get(`/v1/questions/${id}/neighbors`, { params });
+}
+
 export function createQuestion(body: Record<string, unknown>) {
   return http.post("/v1/questions", body);
 }

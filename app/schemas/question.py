@@ -63,3 +63,12 @@ class QuestionImportResult(BaseModel):
 
     created: int
     message: str
+
+
+class QuestionNeighborsOut(BaseModel):
+    """与列表查询条件一致时的上一题/下一题 id（按 id 降序，与列表页相同）。"""
+
+    prev_id: Optional[int] = Field(None, description="上一条（列表中更靠前，id 更大）")
+    next_id: Optional[int] = Field(None, description="下一条（列表中更靠后，id 更小）")
+    index: int = Field(..., description="当前题目在筛选结果中的下标，从 0 开始")
+    total: int = Field(..., description="筛选结果总题数")

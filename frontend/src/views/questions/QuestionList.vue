@@ -63,8 +63,9 @@
       <el-table-column label="状态" width="90">
         <template #default="{ row }">{{ statusLabel[row.status as string] ?? row.status }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="160">
+      <el-table-column label="操作" width="220">
         <template #default="{ row }">
+          <el-button link type="primary" @click="openView(row)">查看</el-button>
           <el-button link type="primary" @click="openEdit(row)"><AppEmoji name="edit" size="sm" decorative />编辑</el-button>
           <el-button link type="danger" @click="onDel(row)"><AppEmoji name="delete" size="sm" decorative />删除</el-button>
         </template>
@@ -164,6 +165,41 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="viewDlg" title="查看题目" width="720px" destroy-on-close @closed="resetView">
+      <div v-loading="viewLoading" class="view-body">
+        <template v-if="viewDetail">
+          <p class="view-meta">
+            第 {{ viewNav?.index != null ? viewNav.index + 1 : "—" }} / {{ viewNav?.total ?? "—" }} 题（当前筛选范围内）
+          </p>
+          <el-descriptions :column="1" border size="small">
+            <el-descriptions-item label="题号">{{ viewDetail.question_no }}</el-descriptions-item>
+            <el-descriptions-item label="题型">{{ qTypeLabel[viewDetail.q_type] ?? viewDetail.q_type }}</el-descriptions-item>
+            <el-descriptions-item label="课程">{{ viewDetail.course_name ?? "—" }}</el-descriptions-item>
+            <el-descriptions-item label="企业">{{ viewDetail.enterprise_name ?? "—" }}</el-descriptions-item>
+            <el-descriptions-item label="难度">{{ viewDetail.difficulty }}</el-descriptions-item>
+            <el-descriptions-item label="状态">{{ statusLabel[viewDetail.status] ?? viewDetail.status }}</el-descriptions-item>
+            <el-descriptions-item label="题干">
+              <pre class="view-pre">{{ viewDetail.stem }}</pre>
+            </el-descriptions-item>
+            <el-descriptions-item v-if="viewDetail.options_json != null" label="选项">
+              <pre class="view-pre">{{ formatJsonField(viewDetail.options_json) }}</pre>
+            </el-descriptions-item>
+            <el-descriptions-item label="答案">
+              <pre class="view-pre">{{ formatJsonField(viewDetail.answer_json) }}</pre>
+            </el-descriptions-item>
+            <el-descriptions-item v-if="viewDetail.analysis" label="解析">
+              <pre class="view-pre">{{ viewDetail.analysis }}</pre>
+            </el-descriptions-item>
+          </el-descriptions>
+        </template>
+      </div>
+      <template #footer>
+        <el-button :disabled="!viewNav?.prev_id" @click="gotoViewNeighbor('prev')">上一题</el-button>
+        <el-button :disabled="!viewNav?.next_id" @click="gotoViewNeighbor('next')">下一题</el-button>
+        <el-button type="primary" @click="viewDlg = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="importDlg" title="导入题库" width="520px" @closed="resetImport">
       <el-form label-width="100px">
         <el-form-item label="所属企业" required>
@@ -234,6 +270,8 @@ import {
   deleteQuestion,
   batchPublishQuestions,
   importQuestions,
+  getQuestion,
+  getQuestionNeighbors,
 } from "@/api/questions";
 import { useAuthStore } from "@/stores/auth";
 
@@ -304,9 +342,84 @@ const importFile = ref<File | null>(null);
 const importLoading = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
+type ViewQuestionDetail = {
+  id: number;
+  question_no: string;
+  q_type: string;
+  stem: string;
+  options_json: unknown;
+  answer_json: unknown;
+  analysis?: string | null;
+  difficulty: number;
+  status: string;
+  course_name?: string | null;
+  enterprise_name?: string | null;
+};
+
+type ViewNeighbors = {
+  prev_id: number | null;
+  next_id: number | null;
+  index: number;
+  total: number;
+};
+
+const viewDlg = ref(false);
+const viewLoading = ref(false);
+const viewDetail = ref<ViewQuestionDetail | null>(null);
+const viewNav = ref<ViewNeighbors | null>(null);
+
 function courseOptLabel(c: CourseOpt) {
   const en = c.enterprise?.name;
   return en ? `${c.name}（${en}）` : c.name;
+}
+
+function formatJsonField(v: unknown) {
+  if (v == null) return "—";
+  if (typeof v === "string") return v;
+  return JSON.stringify(v, null, 2);
+}
+
+function neighborQueryParams(): Record<string, unknown> {
+  const p: Record<string, unknown> = {};
+  if (filterCourseId.value != null) p.course_id = filterCourseId.value;
+  if (filterType.value) p.q_type = filterType.value;
+  if (filterStatus.value) p.status = filterStatus.value;
+  const sk = filterStem.value.trim();
+  if (sk) p.stem_keyword = sk;
+  return p;
+}
+
+function resetView() {
+  viewDetail.value = null;
+  viewNav.value = null;
+}
+
+async function loadViewDetail(id: number) {
+  viewLoading.value = true;
+  try {
+    const [{ data: d }, { data: n }] = await Promise.all([
+      getQuestion(id),
+      getQuestionNeighbors(id, neighborQueryParams()),
+    ]);
+    viewDetail.value = d as ViewQuestionDetail;
+    viewNav.value = n as ViewNeighbors;
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "加载失败"));
+    viewDlg.value = false;
+  } finally {
+    viewLoading.value = false;
+  }
+}
+
+async function openView(row: Record<string, unknown>) {
+  viewDlg.value = true;
+  await loadViewDetail(row.id as number);
+}
+
+async function gotoViewNeighbor(dir: "prev" | "next") {
+  const id = dir === "prev" ? viewNav.value?.prev_id : viewNav.value?.next_id;
+  if (id == null) return;
+  await loadViewDetail(id);
 }
 
 async function remoteToolbarCourses(query: string) {
@@ -644,5 +757,20 @@ onMounted(async () => {
   margin: 6px 0 0;
   font-size: 12px;
   color: #64748b;
+}
+.view-meta {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #64748b;
+}
+.view-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 13px;
+}
+.view-body {
+  min-height: 120px;
 }
 </style>
