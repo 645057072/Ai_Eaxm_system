@@ -34,7 +34,7 @@ const router = createRouter({
           path: "system/roles/:roleId/permissions",
           name: "role-permissions",
           component: () => import("@/views/system/RolePermissionPage.vue"),
-          meta: { permission: "action.role.permission", title: "功能授权" },
+          meta: { permission: "action.role.permission", title: "功能授权", keepAlive: true },
         },
         {
           path: "system/roles",

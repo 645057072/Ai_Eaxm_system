@@ -137,7 +137,12 @@
         </el-button>
       </el-header>
       <el-main class="main">
-        <router-view />
+        <router-view v-slot="{ Component, route: r }">
+          <keep-alive include="RolePermissionPage">
+            <component :is="Component" v-if="r.meta?.keepAlive" />
+          </keep-alive>
+          <component :is="Component" v-if="!r.meta?.keepAlive" />
+        </router-view>
       </el-main>
     </el-container>
   </el-container>

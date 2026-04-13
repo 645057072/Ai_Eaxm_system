@@ -2,10 +2,15 @@
   <el-card>
     <template #header>
       <div class="hdr">
-        <el-button link type="primary" @click="router.push('/system/roles')">
-          <AppEmoji name="back" size="sm" decorative />返回角色列表
-        </el-button>
         <span class="title">功能授权 — {{ roleName }}（{{ roleCode }}）</span>
+        <div class="hdr-act">
+          <el-button link type="primary" @click="router.push('/system/roles')">
+            <AppEmoji name="back" size="sm" decorative />返回列表
+          </el-button>
+          <el-button link type="info" @click="closePage">
+            <AppEmoji name="close" size="sm" decorative />关闭
+          </el-button>
+        </div>
       </div>
     </template>
 
@@ -27,13 +32,13 @@
             </div>
           </template>
 
-          <template v-if="mod.lists.length">
-            <div class="kind-label">列表</div>
-            <div v-for="row in mod.lists" :key="'l-' + row.item.code" class="lf-wrap">
+          <template v-if="mod.forms.length">
+            <div class="kind-label">表单</div>
+            <div v-for="row in mod.forms" :key="'f-' + row.item.code" class="lf-wrap">
               <div class="tree-line depth-1 row-with-sub">
                 <el-checkbox
                   :model-value="has(row.item.code)"
-                  @change="(v: boolean | string | number) => onListFormCheck(row, 'list', !!v)"
+                  @change="(v: boolean | string | number) => onListFormCheck(row, 'form', !!v)"
                 >
                   {{ row.item.name }}
                 </el-checkbox>
@@ -54,13 +59,13 @@
             </div>
           </template>
 
-          <template v-if="mod.forms.length">
-            <div class="kind-label">表单</div>
-            <div v-for="row in mod.forms" :key="'f-' + row.item.code" class="lf-wrap">
+          <template v-if="mod.lists.length">
+            <div class="kind-label">列表</div>
+            <div v-for="row in mod.lists" :key="'l-' + row.item.code" class="lf-wrap">
               <div class="tree-line depth-1 row-with-sub">
                 <el-checkbox
                   :model-value="has(row.item.code)"
-                  @change="(v: boolean | string | number) => onListFormCheck(row, 'form', !!v)"
+                  @change="(v: boolean | string | number) => onListFormCheck(row, 'list', !!v)"
                 >
                   {{ row.item.name }}
                 </el-checkbox>
@@ -99,12 +104,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onActivated, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { apiErrorMessage } from "@/api/http";
 import { fetchPermissionCatalog, type AuthModulePayload, type CatalogItem } from "@/api/permissions";
 import { fetchRolePermissions, getRole, saveRolePermissions } from "@/api/roles";
+
+defineOptions({ name: "RolePermissionPage" });
 
 type LfRow = { item: CatalogItem; fields: CatalogItem[] };
 
@@ -119,6 +126,12 @@ const saving = ref(false);
 const authModules = ref<AuthModulePayload[]>([]);
 const selectedList = ref<string[]>([]);
 const includeSub = reactive<Record<string, boolean>>({});
+const loadedRoleId = ref<number | null>(null);
+
+function closePage() {
+  // 关闭：返回角色列表；页面被 keep-alive 缓存，未主动清空表单/勾选
+  router.push("/system/roles");
+}
 
 function has(code: string) {
   return selectedList.value.includes(code);
@@ -189,6 +202,7 @@ async function load() {
     selectedList.value = [...codes];
     Object.keys(includeSub).forEach((k) => delete includeSub[k]);
     syncIncludeSubFlags();
+    loadedRoleId.value = id;
   } catch (e) {
     ElMessage.error(apiErrorMessage(e, "加载失败"));
     router.replace("/system/roles");
@@ -211,7 +225,19 @@ async function savePerm() {
   }
 }
 
-onMounted(load);
+watch(
+  roleId,
+  async (id) => {
+    if (!id || !Number.isFinite(id) || id < 1) return;
+    if (loadedRoleId.value === id && !loading.value) return;
+    await load();
+  },
+  { immediate: true },
+);
+
+onActivated(() => {
+  // keep-alive 恢复时不强制 reload，保留用户当前勾选状态
+});
 </script>
 
 <style scoped>
@@ -220,6 +246,12 @@ onMounted(load);
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
+}
+.hdr-act {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 }
 .title {
   font-weight: 600;
