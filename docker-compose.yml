@@ -1,4 +1,9 @@
 # 本地 / 单机 ECS：MySQL + Redis + API + Web（统一入口 80）
+# 显式 bridge 网络，确保 api 能解析主机名 mysql、redis（勿省略 mysql 服务或拆分到不同 compose 项目）
+networks:
+  exam_internal:
+    driver: bridge
+
 services:
   mysql:
     image: mysql:8.0
@@ -17,11 +22,15 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    networks:
+      - exam_internal
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    networks:
+      - exam_internal
 
   api:
     build:
@@ -57,6 +66,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    networks:
+      - exam_internal
 
   web:
     restart: unless-stopped
@@ -71,6 +82,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    networks:
+      - exam_internal
 
 volumes:
   mysql_data:

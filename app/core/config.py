@@ -4,6 +4,7 @@
 from functools import lru_cache
 from typing import List
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,8 +28,15 @@ class Settings(BaseSettings):
     # 跨域：逗号分隔 URL；环境变量 CORS_ORIGINS（勿用 List 字段，见 parse_cors_origins_env 说明）
     cors_origins: str = "*"
 
-    # MySQL（阿里云 RDS）；环境变量 DATABASE_URL
+    # MySQL（阿里云 RDS）；环境变量 DATABASE_URL（勿在 .env 写 DATABASE_URL= 空行，否则会覆盖默认值）
     database_url: str = "mysql+pymysql://exam:exam@127.0.0.1:3306/exam_db?charset=utf8mb4"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _database_url_non_empty(cls, v: object) -> object:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return "mysql+pymysql://exam:exam@127.0.0.1:3306/exam_db?charset=utf8mb4"
+        return v
 
     # JWT；环境变量 SECRET_KEY
     secret_key: str = "change-me-in-production-use-long-random-string"
