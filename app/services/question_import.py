@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # 题干最大字符数（与接口校验一致）
 STEM_MAX_LEN = 2000
+# 解析字段最大字符数（MySQL TEXT 约 64KB；UTF-8 下单字段不宜过长）
+ANALYSIS_MAX_LEN = 16000
 
 
 def _text_from_txt_csv(raw: bytes) -> str:
@@ -80,15 +82,54 @@ def _truncate_stem(s: str) -> str:
     return s[:STEM_MAX_LEN]
 
 
+def _crop_analysis_body(raw: str) -> str:
+    """截取「解析」正文，遇下一题题号或下一道答案行时截断，避免误吞整卷。"""
+    if not raw:
+        return ""
+    lines_out: List[str] = []
+    for line in raw.splitlines():
+        st = line.strip()
+        if lines_out:
+            # 下一道题常见行首：数字+点/顿号+正文
+            if re.match(r"^\d{1,3}[\.\)、]\s*\S", st):
+                break
+            # 下一题的「答案：」误入解析区
+            if re.match(r"^(?:答案|标准答案)[：:]", st):
+                break
+        elif re.match(r"^\d{1,3}[\.\)、]\s*\S", st):
+            # 解析区首行即像下一题题号，视为无有效解析
+            return ""
+        lines_out.append(line)
+    return "\n".join(lines_out).strip()
+
+
+def _truncate_analysis(s: str) -> Optional[str]:
+    """解析入库前截断长度。"""
+    s = s.strip()
+    if not s:
+        return None
+    if len(s) > ANALYSIS_MAX_LEN:
+        return s[:ANALYSIS_MAX_LEN]
+    return s
+
+
+def normalize_analysis(value: Optional[str]) -> Optional[str]:
+    """供 API 入库前统一限制解析长度（与导入解析逻辑一致）。"""
+    if value is None:
+        return None
+    return _truncate_analysis(value)
+
+
 def _split_answer_analysis(text: str) -> Tuple[str, Optional[str], Optional[str]]:
     """从整段文本去掉「答案」「解析」行块，仅保留题目与选项部分。"""
     t = text.strip()
     aw: Optional[str] = None
     an: Optional[str] = None
-    # 先去掉末尾「解析：…」（可多行）
-    m_p = re.search(r"(?:^|\n)\s*解析[：:]\s*([\s\S]+)\s*$", t)
+    # 先去掉「解析：…」：不可贪婪到全文末尾，需按下一题边界裁剪后再截断长度
+    m_p = re.search(r"(?:^|\n)\s*解析[：:]\s*", t)
     if m_p:
-        an = m_p.group(1).strip()
+        rest = t[m_p.end() :]
+        an = _truncate_analysis(_crop_analysis_body(rest))
         t = t[: m_p.start()].strip()
     # 再去掉「答案：」单行
     m_a = re.search(r"(?:^|\n)\s*(?:答案|标准答案)[：:]\s*([^\n]+)", t)
@@ -215,7 +256,7 @@ def parse_question_block(block: str) -> Optional[Dict[str, Any]]:
             "stem": stem,
             "options_json": None,
             "answer_json": _parse_answer_to_json(aw_raw, "fill"),
-            "analysis": (an_raw.strip() if an_raw else None) or None,
+            "analysis": an_raw,
         }
 
     if q_type == "judge":
@@ -230,7 +271,7 @@ def parse_question_block(block: str) -> Optional[Dict[str, Any]]:
             "stem": stem,
             "options_json": opts_use,
             "answer_json": _parse_answer_to_json(aw_raw, "judge"),
-            "analysis": (an_raw.strip() if an_raw else None) or None,
+            "analysis": an_raw,
         }
 
     stem = _truncate_stem(stem_core if stem_core else (lines[0] if lines else "（题干）"))
@@ -246,7 +287,7 @@ def parse_question_block(block: str) -> Optional[Dict[str, Any]]:
                 {"key": "D", "text": "选项D"},
             ],
             "answer_json": _parse_answer_to_json(aw_raw, "single"),
-            "analysis": (an_raw.strip() if an_raw else None) or None,
+            "analysis": an_raw,
         }
 
     ans_j = _parse_answer_to_json(aw_raw, q_type)
@@ -255,7 +296,7 @@ def parse_question_block(block: str) -> Optional[Dict[str, Any]]:
         "stem": stem,
         "options_json": opts,
         "answer_json": ans_j,
-        "analysis": (an_raw.strip() if an_raw else None) or None,
+        "analysis": an_raw,
     }
 
 

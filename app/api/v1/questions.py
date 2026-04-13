@@ -30,6 +30,7 @@ from app.services.question_import import (
     build_image_placeholder,
     build_questions_from_text,
     extract_plain_text,
+    normalize_analysis,
 )
 
 router = APIRouter()
@@ -187,7 +188,7 @@ async def import_questions(
                 stem=stem,
                 options_json=it.get("options_json"),
                 answer_json=it["answer_json"] if it.get("answer_json") is not None else {"choice": "A"},
-                analysis=it.get("analysis"),
+                analysis=normalize_analysis(it.get("analysis")),
                 difficulty=1,
                 status="draft",
                 course_id=course_id,
