@@ -196,6 +196,12 @@ def _apply_paper_list_keyword_filters(
     return stmt
 
 
+def _assert_paper_composition_mutable(p: ExamPaper) -> None:
+    """已审核试卷不允许增删题目或清空组卷。"""
+    if (getattr(p, "audit_status", None) or "draft") == "reviewed":
+        raise HTTPException(status_code=409, detail="已审核的试卷不可修改组卷")
+
+
 def _resolve_level_name(p: ExamPaper, db: Session) -> str | None:
     """列表展示用等级名称：优先已加载关联，否则按 level_id 补查。"""
     if p.paper_level is not None:
@@ -696,7 +702,8 @@ def clear_paper_items(
     current: Annotated[User, Depends(require_permission("action.paper.manage"))],
 ) -> None:
     """反组卷：清空试卷内全部题目。"""
-    assert_paper_in_enterprise(db, current, paper_id)
+    p = assert_paper_in_enterprise(db, current, paper_id)
+    _assert_paper_composition_mutable(p)
     db.execute(delete(ExamPaperItem).where(ExamPaperItem.paper_id == paper_id))
     _recalc_total_score(db, paper_id)
     db.commit()
@@ -710,7 +717,8 @@ def add_paper_item(
     current: Annotated[User, Depends(require_permission("action.paper.manage"))],
 ) -> PaperOut:
     """向试卷添加一题。"""
-    assert_paper_in_enterprise(db, current, paper_id)
+    p = assert_paper_in_enterprise(db, current, paper_id)
+    _assert_paper_composition_mutable(p)
     q = assert_question_in_enterprise(db, current, body.question_id)
     if q.status != "published":
         raise HTTPException(
@@ -749,7 +757,8 @@ def remove_paper_item(
     current: Annotated[User, Depends(require_permission("action.paper.manage"))],
 ) -> None:
     """从试卷移除题目项。"""
-    assert_paper_in_enterprise(db, current, paper_id)
+    p = assert_paper_in_enterprise(db, current, paper_id)
+    _assert_paper_composition_mutable(p)
     it = db.get(ExamPaperItem, item_id)
     if it is None or it.paper_id != paper_id:
         raise HTTPException(status_code=404, detail="试卷题目项不存在")

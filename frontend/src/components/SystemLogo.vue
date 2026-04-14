@@ -111,7 +111,8 @@
       </g>
     </svg>
     <div v-if="showTitle" class="titles">
-      <span class="name">{{ displayTitle }}</span>
+      <span class="name cn">{{ displayTitleCn }}</span>
+      <span class="name en">{{ displayTitleEn }}</span>
       <span v-if="subtitle" class="sub">{{ subtitle }}</span>
     </div>
   </div>
@@ -144,9 +145,11 @@ const innerGlow = computed(() => `zk-in-${uid}`);
 
 const ariaLabel = "Ai 智库 ZK 考试系统";
 
-const defaultTitle = "Ai 智库（ZK）考试系统";
+const defaultTitleCn = "Ai 智库（ZK）考试系统";
+const defaultTitleEn = "AI Knowledge Base (ZK) Exam System";
 
-const displayTitle = computed(() => props.titleText ?? defaultTitle);
+const displayTitleCn = computed(() => props.titleText ?? defaultTitleCn);
+const displayTitleEn = computed(() => defaultTitleEn);
 
 const lightBg = computed(() => props.variant === "sidebar" || props.variant === "header");
 
@@ -212,6 +215,17 @@ const badgeFill = computed(() => (lightBg.value ? "#0ea5e9" : "#0284c7"));
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
+.variant-login .name.en {
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(226, 232, 240, 0.9);
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  text-shadow: none;
+}
+
 .variant-login .sub {
   font-size: 0.82rem;
   color: rgba(186, 230, 253, 0.9);
@@ -223,7 +237,15 @@ const badgeFill = computed(() => (lightBg.value ? "#0ea5e9" : "#0284c7"));
   gap: 0;
 }
 
-.variant-sidebar .name {
+.variant-sidebar .name,
+.variant-header .name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.variant-sidebar .name.cn {
   font-size: 0.9rem;
   font-weight: 800;
   background: linear-gradient(90deg, #0f172a 0%, #334155 55%, #4f46e5 100%);
@@ -231,8 +253,15 @@ const badgeFill = computed(() => (lightBg.value ? "#0ea5e9" : "#0284c7"));
   background-clip: text;
   color: transparent;
   letter-spacing: 0.03em;
-  line-height: 1.3;
-  max-width: 200px;
+  line-height: 1.25;
+}
+
+.variant-sidebar .name.en {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
 }
 
 .variant-sidebar .sub {
@@ -240,15 +269,23 @@ const badgeFill = computed(() => (lightBg.value ? "#0ea5e9" : "#0284c7"));
   color: #64748b;
 }
 
-.variant-header .name {
+.variant-header .name.cn {
   font-size: 0.88rem;
   font-weight: 800;
-  color: #0f172a;
   letter-spacing: 0.02em;
   background: linear-gradient(90deg, #0f172a, #4338ca);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  line-height: 1.2;
+}
+
+.variant-header .name.en {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.06em;
+  line-height: 1.15;
 }
 
 .variant-header {

@@ -121,6 +121,12 @@ const router = createRouter({
           meta: { permission: "menu.system.paper_level", title: "试卷等级" },
         },
         {
+          path: "system/students",
+          name: "system-students",
+          component: () => import("@/views/system/StudentList.vue"),
+          meta: { permission: "menu.system.student", title: "学员管理" },
+        },
+        {
           path: "system/document-design",
           name: "system-document-design",
           component: () => import("@/views/placeholder/ModulePlaceholder.vue"),

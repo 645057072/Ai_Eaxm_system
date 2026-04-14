@@ -30,6 +30,7 @@ CATALOG: List[CatalogItem] = [
     {"code": "menu.system.enterprise", "name": "企业信息", "label": "系统管理-基础信息", "kind": "menu"},
     {"code": "menu.system.course", "name": "课程信息", "label": "系统管理-基础信息", "kind": "menu"},
     {"code": "menu.system.paper_level", "name": "试卷等级", "label": "系统管理-基础信息", "kind": "menu"},
+    {"code": "menu.system.student", "name": "学员管理", "label": "系统管理-基础信息", "kind": "menu"},
     {"code": "menu.system.document", "name": "单据设计", "label": "系统管理-设置中心", "kind": "menu"},
     {"code": "menu.system.print", "name": "打印设置", "label": "系统管理-设置中心", "kind": "menu"},
     {"code": "menu.system.online", "name": "在线用户", "label": "系统管理-监管服务", "kind": "menu"},
@@ -44,6 +45,7 @@ CATALOG: List[CatalogItem] = [
     {"code": "list.course", "name": "课程列表", "label": "列表资源", "kind": "list"},
     {"code": "list.paper_level", "name": "试卷等级列表", "label": "列表资源", "kind": "list"},
     {"code": "list.attempt", "name": "答卷记录", "label": "列表资源", "kind": "list"},
+    {"code": "list.student", "name": "学员列表", "label": "列表资源", "kind": "list"},
     {"code": "form.user", "name": "用户表单", "label": "表单", "kind": "form"},
     {"code": "form.enterprise", "name": "企业表单", "label": "表单", "kind": "form"},
     {"code": "form.role", "name": "角色表单", "label": "表单", "kind": "form"},
@@ -53,6 +55,7 @@ CATALOG: List[CatalogItem] = [
     {"code": "form.question_batch", "name": "题库批量操作", "label": "题库管理", "kind": "form"},
     {"code": "form.paper", "name": "试卷新建表单", "label": "试卷管理", "kind": "form"},
     {"code": "form.session", "name": "场次新建表单", "label": "考试场次", "kind": "form"},
+    {"code": "form.student", "name": "学员表单", "label": "系统管理-基础信息", "kind": "form"},
     {"code": "field.user.username", "name": "用户名", "label": "字段-用户", "kind": "field"},
     {"code": "field.user.password", "name": "密码", "label": "字段-用户", "kind": "field"},
     {"code": "field.user.full_name", "name": "姓名", "label": "字段-用户", "kind": "field"},
@@ -109,6 +112,10 @@ CATALOG: List[CatalogItem] = [
     {"code": "action.paper.manage", "name": "试卷维护", "label": "试卷管理", "kind": "action"},
     {"code": "action.session.manage", "name": "场次维护", "label": "考试场次", "kind": "action"},
     {"code": "action.exam.take", "name": "在线考试作答", "label": "可参加的考试", "kind": "action"},
+    {"code": "action.student.create", "name": "新建学员", "label": "操作", "kind": "action"},
+    {"code": "action.student.update", "name": "编辑学员", "label": "操作", "kind": "action"},
+    {"code": "action.student.delete", "name": "删除学员", "label": "操作", "kind": "action"},
+    {"code": "action.student.import", "name": "导入学员信息", "label": "操作", "kind": "action"},
 ]
 
 ALL_CODES: List[str] = [x["code"] for x in CATALOG]

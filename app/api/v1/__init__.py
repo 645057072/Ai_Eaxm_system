@@ -2,7 +2,21 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, users, roles, questions, papers, paper_levels, exam_sessions, attempts, enterprises, files, permissions, courses
+from app.api.v1 import (
+    attempts,
+    auth,
+    courses,
+    enterprises,
+    exam_sessions,
+    files,
+    papers,
+    paper_levels,
+    permissions,
+    questions,
+    roles,
+    students,
+    users,
+)
 
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["认证"])
@@ -17,3 +31,4 @@ api_router.include_router(papers.router, prefix="/papers", tags=["试卷"])
 api_router.include_router(paper_levels.router, prefix="/paper-levels", tags=["试卷等级"])
 api_router.include_router(exam_sessions.router, prefix="/exam-sessions", tags=["考试场次"])
 api_router.include_router(attempts.router, tags=["考试作答"])
+api_router.include_router(students.router, prefix="/students", tags=["学员管理"])

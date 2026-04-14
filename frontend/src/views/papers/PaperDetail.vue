@@ -18,6 +18,7 @@
             auditStatusLabel(paper?.audit_status as string | undefined)
           }}；创建日期：{{ fmtPaperDate(paper?.issue_date) }}；有效期至：{{ fmtPaperDate(paper?.valid_until) }}
         </p>
+        <p v-if="paperReviewed" class="meta meta-lock">已审核试卷不可修改组卷，仅可查看。</p>
       </div>
       <div class="bank-panel">
         <div class="page-list-toolbar toolbar bank-toolbar">
@@ -27,6 +28,7 @@
             clearable
             placeholder="题型"
             style="width: 110px"
+            :disabled="paperReviewed"
             @change="resetPoolPage"
           >
             <el-option v-for="o in poolQTypeOpts" :key="o.value" :label="o.label" :value="o.value" />
@@ -36,11 +38,12 @@
             clearable
             placeholder="题干关键词"
             style="width: 200px"
+            :disabled="paperReviewed"
             @keyup.enter="searchPool"
           />
-          <el-button type="primary" @click="searchPool">查询</el-button>
+          <el-button type="primary" :disabled="paperReviewed" @click="searchPool">查询</el-button>
         </div>
-        <el-table v-loading="poolLoading" :data="poolRows" border size="small" class="bank-table" max-height="280">
+        <el-table v-loading="poolLoading" :data="poolRows" border class="bank-table paper-detail-table" max-height="280">
           <el-table-column prop="id" label="ID" width="72" />
           <el-table-column prop="question_no" label="题号" width="120" show-overflow-tooltip />
           <el-table-column label="题型" width="80">
@@ -49,7 +52,7 @@
           <el-table-column prop="stem" label="题干" min-width="160" show-overflow-tooltip />
           <el-table-column label="操作" width="88" fixed="right">
             <template #default="{ row }">
-              <el-button link type="primary" @click="addFromPool(row as PoolRow)">加入</el-button>
+              <el-button link type="primary" :disabled="paperReviewed" @click="addFromPool(row as PoolRow)">加入</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -67,14 +70,16 @@
         </div>
       </div>
       <div class="page-list-toolbar toolbar">
-        <el-input-number v-model="addQid" :min="1" placeholder="题目ID" />
-        <el-input-number v-model="addScore" :min="0" :step="0.5" />
-        <el-input-number v-model="addOrder" :min="0" placeholder="排序号" />
-        <el-button type="primary" @click="addItem"><AppEmoji name="addToPaper" size="sm" decorative />加入试卷</el-button>
+        <el-input-number v-model="addQid" :min="1" placeholder="题目ID" :disabled="paperReviewed" />
+        <el-input-number v-model="addScore" :min="0" :step="0.5" :disabled="paperReviewed" />
+        <el-input-number v-model="addOrder" :min="0" placeholder="排序号" :disabled="paperReviewed" />
+        <el-button type="primary" :disabled="paperReviewed" @click="addItem"
+          ><AppEmoji name="addToPaper" size="sm" decorative />加入试卷</el-button
+        >
       </div>
       <div class="page-list-body">
         <div class="page-list-table">
-          <el-table :data="sortedPaperItems" border class="items-table" height="100%">
+          <el-table :data="sortedPaperItems" border class="items-table paper-detail-table" height="100%">
             <el-table-column label="编号" width="72" align="center">
               <template #default="{ row }">{{ typeSerialByItemId.get((row as PaperRow).id) ?? "—" }}</template>
             </el-table-column>
@@ -100,7 +105,9 @@
             </el-table-column>
             <el-table-column label="操作" width="100" fixed="right">
               <template #default="{ row }">
-                <el-button link type="danger" @click="remove(row)"><AppEmoji name="remove" size="sm" decorative />移除</el-button>
+                <el-button link type="danger" :disabled="paperReviewed" @click="remove(row)"
+                  ><AppEmoji name="remove" size="sm" decorative />移除</el-button
+                >
               </template>
             </el-table-column>
           </el-table>
@@ -114,6 +121,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
+import { apiErrorMessage } from "@/api/http";
 import { getPaper, addPaperItem, removePaperItem } from "@/api/papers";
 import { listQuestions } from "@/api/questions";
 
@@ -121,6 +129,8 @@ const route = useRoute();
 const id = Number(route.params.id);
 const loading = ref(false);
 const paper = ref<Record<string, unknown> | null>(null);
+
+const paperReviewed = computed(() => (paper.value?.audit_status as string | undefined) === "reviewed");
 const addQid = ref(1);
 const addScore = ref(1);
 const addOrder = ref(1);
@@ -381,6 +391,10 @@ function onPoolSizeChange(sz: number) {
 }
 
 async function addFromPool(row: PoolRow) {
+  if (paperReviewed.value) {
+    ElMessage.warning("已审核试卷不可加入题目");
+    return;
+  }
   addQid.value = row.id;
   await addItem();
 }
@@ -392,19 +406,31 @@ watch(
 );
 
 async function addItem() {
+  if (paperReviewed.value) {
+    ElMessage.warning("已审核试卷不可加入题目");
+    return;
+  }
   try {
     await addPaperItem(id, { question_id: addQid.value, sort_order: addOrder.value, score: addScore.value });
     ElMessage.success("已添加");
     await refresh();
-  } catch {
-    ElMessage.error("添加失败（题目是否存在、是否重复）");
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "添加失败"));
   }
 }
 
 async function remove(row: Record<string, unknown>) {
-  await removePaperItem(id, row.id as number);
-  ElMessage.success("已移除");
-  await refresh();
+  if (paperReviewed.value) {
+    ElMessage.warning("已审核试卷不可移除题目");
+    return;
+  }
+  try {
+    await removePaperItem(id, row.id as number);
+    ElMessage.success("已移除");
+    await refresh();
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "移除失败"));
+  }
 }
 
 onMounted(refresh);
@@ -427,6 +453,19 @@ onMounted(refresh);
 }
 .meta-second {
   margin-bottom: 10px;
+}
+.meta-lock {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #b45309;
+}
+/* 题库表与已加入试卷表统一为默认尺寸字号 */
+.paper-detail-page :deep(.paper-detail-table) {
+  font-size: 14px;
+}
+.paper-detail-page :deep(.paper-detail-table .cell) {
+  font-size: 14px;
+  line-height: 1.5;
 }
 .items-table {
   width: 100%;

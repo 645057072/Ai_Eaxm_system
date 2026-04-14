@@ -72,7 +72,7 @@
             </el-menu-item>
           </el-sub-menu>
           <el-sub-menu
-            v-if="auth.canAny('menu.system.enterprise', 'menu.system.course', 'menu.system.paper_level')"
+            v-if="auth.canAny('menu.system.enterprise', 'menu.system.course', 'menu.system.paper_level', 'menu.system.student')"
             index="sys-basic"
           >
             <template #title>
@@ -86,6 +86,9 @@
             </el-menu-item>
             <el-menu-item v-if="auth.can('menu.system.paper_level')" index="/system/paper-level">
               <span class="menu-item-inner"><AppEmoji name="paperLevel" size="sm" decorative />试卷等级</span>
+            </el-menu-item>
+            <el-menu-item v-if="auth.can('menu.system.student')" index="/system/students">
+              <span class="menu-item-inner"><AppEmoji name="roleStudent" size="sm" decorative />学员管理</span>
             </el-menu-item>
           </el-sub-menu>
           <el-sub-menu

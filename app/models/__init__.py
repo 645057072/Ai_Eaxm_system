@@ -7,6 +7,7 @@ from app.models.exam import ExamAttempt, ExamAnswer, ExamPaper, ExamPaperItem, E
 from app.models.paper_level import PaperLevel
 from app.models.permission import RolePermission
 from app.models.question import Question
+from app.models.student import Student
 from app.models.user import Role, User
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "ExamSession",
     "ExamAttempt",
     "ExamAnswer",
+    "Student",
 ]
