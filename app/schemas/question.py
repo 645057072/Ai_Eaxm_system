@@ -14,7 +14,7 @@ class QuestionCreate(BaseModel):
     answer_json: Any = None
     analysis: Optional[str] = None
     difficulty: int = Field(1, ge=1, le=5)
-    status: str = Field("draft", description="draft|published")
+    status: str = Field("draft", description="draft 草稿 | published 已发布；新建不可为 disabled，禁用仅能对已发布题目操作")
     course_id: Optional[int] = Field(None, ge=1)
     enterprise_id: Optional[int] = Field(None, ge=1)
 
@@ -69,6 +69,12 @@ class QuestionBatchDifficultyIn(BaseModel):
 
     ids: list[int] = Field(..., min_length=1)
     difficulty: int = Field(..., ge=1, le=5)
+
+
+class QuestionBatchIdsIn(BaseModel):
+    """仅传题目 id 列表的批量操作入参。"""
+
+    ids: list[int] = Field(..., min_length=1)
 
 
 class QuestionImportResult(BaseModel):

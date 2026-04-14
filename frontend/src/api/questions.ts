@@ -30,6 +30,21 @@ export function batchPublishQuestions(ids: number[]) {
   return http.post("/v1/questions/batch-publish", { ids });
 }
 
+/** 批量反发布：已发布改为草稿 */
+export function batchUnpublishQuestions(ids: number[]) {
+  return http.post("/v1/questions/batch-unpublish", { ids });
+}
+
+/** 批量禁用：仅已发布可改为禁用 */
+export function batchDisableQuestions(ids: number[]) {
+  return http.post("/v1/questions/batch-disable", { ids });
+}
+
+/** 批量反禁用：禁用恢复为已发布 */
+export function batchEnableQuestions(ids: number[]) {
+  return http.post("/v1/questions/batch-enable", { ids });
+}
+
 /** 批量删除题目 */
 export function batchDeleteQuestions(ids: number[]) {
   return http.post("/v1/questions/batch-delete", { ids });

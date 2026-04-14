@@ -454,7 +454,12 @@ def add_paper_item(
 ) -> PaperOut:
     """向试卷添加一题。"""
     assert_paper_in_enterprise(db, current, paper_id)
-    assert_question_in_enterprise(db, current, body.question_id)
+    q = assert_question_in_enterprise(db, current, body.question_id)
+    if q.status != "published":
+        raise HTTPException(
+            status_code=400,
+            detail="仅已发布题目可加入试卷；草稿请先发布，已禁用题目不可组卷",
+        )
     dup = db.scalar(
         select(func.count())
         .select_from(ExamPaperItem)

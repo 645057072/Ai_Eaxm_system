@@ -31,7 +31,9 @@ class Question(Base):
     analysis: Mapped[Optional[str]] = mapped_column(Text, comment="解析")
     dedup_hash: Mapped[Optional[str]] = mapped_column(String(64), index=True, comment="企业+课程+内容指纹，用于去重")
     difficulty: Mapped[int] = mapped_column(Integer, default=1, comment="难度 1-5")
-    status: Mapped[str] = mapped_column(String(16), default="draft", index=True, comment="draft/published")
+    status: Mapped[str] = mapped_column(
+        String(16), default="draft", index=True, comment="draft 草稿 | published 已发布 | disabled 禁用"
+    )
     course_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sys_course.id"), nullable=True, index=True, comment="所属课程")
     enterprise_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("sys_enterprise.id"), nullable=True, index=True, comment="所属企业"

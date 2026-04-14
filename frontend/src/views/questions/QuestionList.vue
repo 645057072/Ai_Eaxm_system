@@ -10,6 +10,7 @@
       <el-select v-model="filterStatus" clearable placeholder="状态" style="width: 140px">
         <el-option label="草稿" value="draft" />
         <el-option label="已发布" value="published" />
+        <el-option label="禁用" value="disabled" />
       </el-select>
       <el-select
         v-model="filterCourseId"
@@ -47,6 +48,9 @@
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item v-if="auth.can('action.question.batch')" command="publish">发布</el-dropdown-item>
+            <el-dropdown-item v-if="auth.can('action.question.batch')" command="unpublish">反发布</el-dropdown-item>
+            <el-dropdown-item v-if="auth.can('action.question.batch')" command="disable">禁用</el-dropdown-item>
+            <el-dropdown-item v-if="auth.can('action.question.batch')" command="enable">反禁用</el-dropdown-item>
             <el-dropdown-item
               v-if="auth.can('action.question.manage')"
               command="difficulty"
@@ -87,7 +91,14 @@
         <template #default="{ row }">
           <el-button link type="primary" @click="openView(row)">查看</el-button>
           <el-button link type="primary" @click="openEdit(row)"><AppEmoji name="edit" size="sm" decorative />编辑</el-button>
-          <el-button link type="danger" @click="onDel(row)"><AppEmoji name="delete" size="sm" decorative />删除</el-button>
+          <el-button
+            link
+            type="danger"
+            :disabled="row.status !== 'draft'"
+            :title="row.status !== 'draft' ? '仅草稿可删除；已发布请先反发布，已禁用请先反禁用' : ''"
+            @click="onDel(row)"
+            ><AppEmoji name="delete" size="sm" decorative />删除</el-button
+          >
         </template>
       </el-table-column>
     </el-table>
@@ -182,8 +193,24 @@
         <el-form-item label="难度(1-5)"><el-input-number v-model="form.difficulty" :min="1" :max="5" /></el-form-item>
         <el-form-item label="状态">
           <el-select v-model="form.status" style="width: 100%">
-            <el-option label="草稿 draft" value="draft" />
-            <el-option label="已发布 published" value="published" />
+            <template v-if="!form.id || form.status === 'draft'">
+              <el-option label="草稿 draft" value="draft" />
+              <el-option label="已发布 published" value="published" />
+            </template>
+            <template v-else-if="form.status === 'published'">
+              <el-option label="草稿 draft" value="draft" />
+              <el-option label="已发布 published" value="published" />
+              <el-option label="禁用 disabled" value="disabled" />
+            </template>
+            <template v-else-if="form.status === 'disabled'">
+              <el-option label="禁用 disabled" value="disabled" />
+              <el-option label="已发布 published（反禁用）" value="published" />
+            </template>
+            <template v-else>
+              <el-option label="草稿 draft" value="draft" />
+              <el-option label="已发布 published" value="published" />
+              <el-option label="禁用 disabled" value="disabled" />
+            </template>
           </el-select>
         </el-form-item>
       </el-form>
@@ -323,6 +350,9 @@ import {
   updateQuestion,
   deleteQuestion,
   batchPublishQuestions,
+  batchUnpublishQuestions,
+  batchDisableQuestions,
+  batchEnableQuestions,
   importQuestions,
   getQuestion,
   getQuestionNeighbors,
@@ -349,6 +379,7 @@ const qTypeLabel: Record<string, string> = {
 const statusLabel: Record<string, string> = {
   draft: "草稿",
   published: "已发布",
+  disabled: "禁用",
 };
 
 const rows = ref<Record<string, unknown>[]>([]);
@@ -854,6 +885,54 @@ async function onBatchCommand(cmd: string) {
     }
     return;
   }
+  if (cmd === "unpublish") {
+    try {
+      await ElMessageBox.confirm(
+        `将选中的 ${ids.length} 道题目反发布为草稿？已发布题目删除前需先反发布。`,
+        "批量反发布",
+        { type: "warning" },
+      );
+      const { data } = await batchUnpublishQuestions(ids);
+      const n = (data as { updated?: number }).updated ?? 0;
+      ElMessage.success(`已反发布 ${n} 道题目`);
+      await load();
+    } catch (e) {
+      if (e !== "cancel") ElMessage.error(apiErrorMessage(e, "批量反发布失败"));
+    }
+    return;
+  }
+  if (cmd === "disable") {
+    try {
+      await ElMessageBox.confirm(
+        `将选中的 ${ids.length} 道已发布题目禁用？未发布题目不会变更；禁用后不可组卷、不可删除。`,
+        "批量禁用",
+        { type: "warning" },
+      );
+      const { data } = await batchDisableQuestions(ids);
+      const n = (data as { updated?: number }).updated ?? 0;
+      ElMessage.success(`已禁用 ${n} 道题目`);
+      await load();
+    } catch (e) {
+      if (e !== "cancel") ElMessage.error(apiErrorMessage(e, "批量禁用失败"));
+    }
+    return;
+  }
+  if (cmd === "enable") {
+    try {
+      await ElMessageBox.confirm(
+        `将选中的 ${ids.length} 道禁用题目反禁用为已发布？`,
+        "批量反禁用",
+        { type: "warning" },
+      );
+      const { data } = await batchEnableQuestions(ids);
+      const n = (data as { updated?: number }).updated ?? 0;
+      ElMessage.success(`已反禁用 ${n} 道题目`);
+      await load();
+    } catch (e) {
+      if (e !== "cancel") ElMessage.error(apiErrorMessage(e, "批量反禁用失败"));
+    }
+    return;
+  }
   if (cmd === "difficulty") {
     batchDifficultyIds.value = [...ids];
     batchDifficultyValue.value = 1;
@@ -868,8 +947,10 @@ async function onBatchCommand(cmd: string) {
         { type: "warning" },
       );
       const { data } = await batchDeleteQuestions(ids);
-      const n = (data as { deleted?: number }).deleted ?? 0;
-      ElMessage.success(`已删除 ${n} 道题目`);
+      const d = data as { deleted?: number; skipped?: number };
+      const n = d.deleted ?? 0;
+      const sk = d.skipped ?? 0;
+      ElMessage.success(`已删除 ${n} 道题目${sk ? `，跳过 ${sk} 道（非草稿）` : ""}`);
       await load();
     } catch (e) {
       if (e !== "cancel") ElMessage.error(apiErrorMessage(e, "批量删除失败"));
@@ -954,10 +1035,18 @@ async function save() {
 }
 
 async function onDel(row: Record<string, unknown>) {
-  await ElMessageBox.confirm("确定删除？", "提示", { type: "warning" });
-  await deleteQuestion(row.id as number);
-  ElMessage.success("已删除");
-  await load();
+  if (row.status !== "draft") {
+    ElMessage.warning("仅草稿可删除；已发布请先反发布，已禁用请先反禁用");
+    return;
+  }
+  try {
+    await ElMessageBox.confirm("确定删除？", "提示", { type: "warning" });
+    await deleteQuestion(row.id as number);
+    ElMessage.success("已删除");
+    await load();
+  } catch (e) {
+    if (e !== "cancel") ElMessage.error(apiErrorMessage(e, "删除失败"));
+  }
 }
 
 onMounted(async () => {

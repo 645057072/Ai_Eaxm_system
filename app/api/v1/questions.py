@@ -22,6 +22,7 @@ from app.schemas.common import PageParams, PageResult
 from app.schemas.question import (
     QuestionBatchDeleteIn,
     QuestionBatchDifficultyIn,
+    QuestionBatchIdsIn,
     QuestionBatchPublishIn,
     QuestionCreate,
     QuestionImportResult,
@@ -39,6 +40,38 @@ from app.services.question_import import (
 )
 
 router = APIRouter()
+
+_ALLOWED_Q_STATUS = frozenset({"draft", "published", "disabled"})
+
+
+def _validate_status_transition(old: str, new: str) -> None:
+    """题目状态变更：未发布不得设为禁用；禁用仅可反禁用为已发布。"""
+    if new not in _ALLOWED_Q_STATUS:
+        raise HTTPException(status_code=400, detail=f"非法状态：{new}，仅支持 draft / published / disabled")
+    allowed = {
+        ("draft", "draft"),
+        ("draft", "published"),
+        ("published", "published"),
+        ("published", "draft"),
+        ("published", "disabled"),
+        ("disabled", "disabled"),
+        ("disabled", "published"),
+    }
+    if (old, new) not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不允许从「{old}」变更为「{new}」：未发布不得禁用；禁用题目请使用反禁用恢复为已发布",
+        )
+
+
+def _assert_question_deletable(obj: Question) -> None:
+    if obj.status == "draft":
+        return
+    if obj.status == "published":
+        raise HTTPException(status_code=400, detail="已发布题目不可删除，请先反发布为草稿")
+    if obj.status == "disabled":
+        raise HTTPException(status_code=400, detail="已禁用题目不可删除，请先反禁用")
+    raise HTTPException(status_code=400, detail=f"题目状态为「{obj.status}」，仅草稿可删除")
 
 
 def _to_out(obj: Question) -> QuestionOut:
@@ -116,7 +149,7 @@ def batch_publish_questions(
     db: Annotated[Session, Depends(get_db)],
     current: Annotated[User, Depends(require_permission("action.question.batch"))],
 ) -> dict:
-    """批量发布：将草稿改为已发布。"""
+    """批量发布：仅草稿可改为已发布。"""
     n_ok = 0
     for qid in body.ids:
         obj = db.get(Question, qid)
@@ -126,7 +159,76 @@ def batch_publish_questions(
             assert_question_in_enterprise(db, current, qid)
         except HTTPException:
             continue
-        if obj.status != "published":
+        if obj.status == "draft":
+            obj.status = "published"
+            n_ok += 1
+    db.commit()
+    return {"updated": n_ok}
+
+
+@router.post("/batch-unpublish", response_model=dict)
+def batch_unpublish_questions(
+    body: QuestionBatchIdsIn,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[User, Depends(require_permission("action.question.batch"))],
+) -> dict:
+    """批量反发布：已发布改为草稿。"""
+    n_ok = 0
+    for qid in body.ids:
+        obj = db.get(Question, qid)
+        if obj is None:
+            continue
+        try:
+            assert_question_in_enterprise(db, current, qid)
+        except HTTPException:
+            continue
+        if obj.status == "published":
+            obj.status = "draft"
+            n_ok += 1
+    db.commit()
+    return {"updated": n_ok}
+
+
+@router.post("/batch-disable", response_model=dict)
+def batch_disable_questions(
+    body: QuestionBatchIdsIn,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[User, Depends(require_permission("action.question.batch"))],
+) -> dict:
+    """批量禁用：仅已发布可改为禁用。"""
+    n_ok = 0
+    for qid in body.ids:
+        obj = db.get(Question, qid)
+        if obj is None:
+            continue
+        try:
+            assert_question_in_enterprise(db, current, qid)
+        except HTTPException:
+            continue
+        if obj.status == "published":
+            obj.status = "disabled"
+            n_ok += 1
+    db.commit()
+    return {"updated": n_ok}
+
+
+@router.post("/batch-enable", response_model=dict)
+def batch_enable_questions(
+    body: QuestionBatchIdsIn,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[User, Depends(require_permission("action.question.batch"))],
+) -> dict:
+    """批量反禁用：禁用恢复为已发布。"""
+    n_ok = 0
+    for qid in body.ids:
+        obj = db.get(Question, qid)
+        if obj is None:
+            continue
+        try:
+            assert_question_in_enterprise(db, current, qid)
+        except HTTPException:
+            continue
+        if obj.status == "disabled":
             obj.status = "published"
             n_ok += 1
     db.commit()
@@ -139,8 +241,9 @@ def batch_delete_questions(
     db: Annotated[Session, Depends(get_db)],
     current: Annotated[User, Depends(require_permission("action.question.manage"))],
 ) -> dict:
-    """批量删除题目。"""
+    """批量删除题目：仅草稿可删。"""
     n_ok = 0
+    n_skip = 0
     for qid in body.ids:
         obj = db.get(Question, qid)
         if obj is None:
@@ -149,10 +252,13 @@ def batch_delete_questions(
             assert_question_in_enterprise(db, current, qid)
         except HTTPException:
             continue
+        if obj.status != "draft":
+            n_skip += 1
+            continue
         db.delete(obj)
         n_ok += 1
     db.commit()
-    return {"deleted": n_ok}
+    return {"deleted": n_ok, "skipped": n_skip}
 
 
 @router.post("/batch-difficulty", response_model=dict)
@@ -390,6 +496,8 @@ def create_question(
     current: Annotated[User, Depends(require_permission("action.question.manage"))],
 ) -> QuestionOut:
     """新增题目。"""
+    if body.status not in ("draft", "published"):
+        raise HTTPException(status_code=400, detail="新建题目状态仅可为草稿或已发布，禁用请通过批量或编辑在已发布后再操作")
     if find_duplicate_question_id(
         db,
         body.enterprise_id,
@@ -510,6 +618,8 @@ def update_question(
 ) -> QuestionOut:
     obj = assert_question_in_enterprise(db, current, question_id)
     data = body.model_dump(exclude_unset=True)
+    if "status" in data:
+        _validate_status_transition(obj.status, data["status"])
     stem_u = data.get("stem", obj.stem)
     qtype_u = data.get("q_type", obj.q_type)
     opts_u = data.get("options_json", obj.options_json)
@@ -568,5 +678,6 @@ def delete_question(
     current: Annotated[User, Depends(require_permission("action.question.manage"))],
 ) -> None:
     obj = assert_question_in_enterprise(db, current, question_id)
+    _assert_question_deletable(obj)
     db.delete(obj)
     db.commit()
