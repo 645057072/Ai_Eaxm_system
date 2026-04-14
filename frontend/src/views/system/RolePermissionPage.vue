@@ -24,12 +24,7 @@
             </p>
           </div>
           <el-tabs v-model="activeModuleKey" class="perm-tabs" type="card">
-            <el-tab-pane
-              v-for="mod in authModules"
-              :key="mod.moduleKey"
-              :name="mod.moduleKey"
-              :label="mod.moduleTitle"
-            >
+            <el-tab-pane v-for="mod in authModules" :key="mod.moduleKey" :name="mod.moduleKey" :label="mod.moduleTitle">
               <div class="role-perm-tree-scroll">
                 <div class="tree-panel">
                   <div class="mod-block">
@@ -45,13 +40,109 @@
                       <span v-else>{{ mod.moduleTitle }}</span>
                     </div>
 
-                    <template v-if="mod.menus.length">
+                    <template v-if="mod.moduleKey === 'sys'">
+                      <div v-for="sec in sysSecondMenus" :key="sec.code" class="menu-block">
+                        <div class="tree-line depth-1 menu-line">
+                          <el-checkbox :model-value="has(sec.code)" @change="(v: boolean | string | number) => toggleCode(sec.code, !!v)">
+                            {{ sec.name }}
+                          </el-checkbox>
+                        </div>
+                        <div class="depth-2">
+                          <div v-for="m in sysThirdMenus(sec.code)" :key="m.code" class="menu-block">
+                            <div class="tree-line depth-2 menu-line">
+                              <el-checkbox
+                                :model-value="has(m.code)"
+                                @change="(v: boolean | string | number) => toggleCode(m.code, !!v)"
+                              >
+                                {{ m.name }}
+                              </el-checkbox>
+                            </div>
+                            <template v-if="formsForMenu(mod, m).length">
+                              <div class="kind-label depth-2">表单</div>
+                              <div v-for="row in formsForMenu(mod, m)" :key="'f-' + row.item.code" class="lf-wrap">
+                                <div class="tree-line depth-2 row-with-sub">
+                                  <el-checkbox
+                                    :model-value="has(row.item.code)"
+                                    @change="(v: boolean | string | number) => onListFormCheck(row, 'form', !!v)"
+                                  >
+                                    {{ row.item.name }}
+                                  </el-checkbox>
+                                  <el-checkbox
+                                    v-if="row.fields.length"
+                                    v-model="includeSub[row.item.code]"
+                                    class="sub-check"
+                                    @change="() => onIncludeSubToggle(row)"
+                                  >
+                                    含下级
+                                  </el-checkbox>
+                                </div>
+                                <div class="field-grid depth-3">
+                                  <el-checkbox
+                                    v-for="f in row.fields"
+                                    :key="f.code"
+                                    class="field-chip"
+                                    :model-value="has(f.code)"
+                                    @change="(v: boolean | string | number) => toggleCode(f.code, !!v)"
+                                  >
+                                    {{ f.name }}
+                                  </el-checkbox>
+                                </div>
+                              </div>
+                            </template>
+
+                            <template v-if="listsForMenu(mod, m).length">
+                              <div class="kind-label depth-2">列表</div>
+                              <div v-for="row in listsForMenu(mod, m)" :key="'l-' + row.item.code" class="lf-wrap">
+                                <div class="tree-line depth-2 row-with-sub">
+                                  <el-checkbox
+                                    :model-value="has(row.item.code)"
+                                    @change="(v: boolean | string | number) => onListFormCheck(row, 'list', !!v)"
+                                  >
+                                    {{ row.item.name }}
+                                  </el-checkbox>
+                                  <el-checkbox
+                                    v-if="row.fields.length"
+                                    v-model="includeSub[row.item.code]"
+                                    class="sub-check"
+                                    @change="() => onIncludeSubToggle(row)"
+                                  >
+                                    含下级
+                                  </el-checkbox>
+                                </div>
+                                <div class="field-grid depth-3">
+                                  <el-checkbox
+                                    v-for="f in row.fields"
+                                    :key="f.code"
+                                    class="field-chip"
+                                    :model-value="has(f.code)"
+                                    @change="(v: boolean | string | number) => toggleCode(f.code, !!v)"
+                                  >
+                                    {{ f.name }}
+                                  </el-checkbox>
+                                </div>
+                              </div>
+                            </template>
+
+                            <template v-if="actionsForMenu(mod, m).length">
+                              <div class="kind-label depth-2">操作</div>
+                              <div v-for="a in actionsForMenu(mod, m)" :key="a.code" class="tree-line depth-2">
+                                <el-checkbox
+                                  :model-value="has(a.code)"
+                                  @change="(v: boolean | string | number) => toggleCode(a.code, !!v)"
+                                >
+                                  {{ a.name }}
+                                </el-checkbox>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+
+                    <template v-else-if="mod.menus.length">
                       <div v-for="m in mod.menus" :key="m.code" class="menu-block">
                         <div class="tree-line depth-1 menu-line">
-                          <el-checkbox
-                            :model-value="has(m.code)"
-                            @change="(v: boolean | string | number) => toggleCode(m.code, !!v)"
-                          >
+                          <el-checkbox :model-value="has(m.code)" @change="(v: boolean | string | number) => toggleCode(m.code, !!v)">
                             {{ m.name }}
                           </el-checkbox>
                         </div>
@@ -254,6 +345,40 @@ const activeModuleKey = ref<string>("");
 const selectedList = ref<string[]>([]);
 const includeSub = reactive<Record<string, boolean>>({});
 const loadedRoleId = ref<number | null>(null);
+
+type MenuItem = { code: string; name: string; label?: string };
+
+const sysSecondMenus: MenuItem[] = [
+  { code: "menu.system.user_manage", name: "用户管理" },
+  { code: "menu.system.basic", name: "基础信息" },
+  { code: "menu.system.settings", name: "设置中心" },
+  { code: "menu.system.supervision", name: "监管服务" },
+];
+
+const _sysThirdMenuBySecond: Record<string, MenuItem[]> = {
+  "menu.system.user_manage": [
+    { code: "menu.system.users", name: "用户信息" },
+    { code: "menu.system.roles", name: "角色权限" },
+  ],
+  "menu.system.basic": [
+    { code: "menu.system.enterprise", name: "企业信息" },
+    { code: "menu.system.course", name: "课程信息" },
+    { code: "menu.system.paper_level", name: "试卷等级" },
+    { code: "menu.system.student", name: "学员管理" },
+  ],
+  "menu.system.settings": [
+    { code: "menu.system.document", name: "单据设计" },
+    { code: "menu.system.print", name: "打印设置" },
+  ],
+  "menu.system.supervision": [
+    { code: "menu.system.online", name: "在线用户" },
+    { code: "menu.system.logs", name: "日志管理" },
+  ],
+};
+
+function sysThirdMenus(secondCode: string): MenuItem[] {
+  return _sysThirdMenuBySecond[secondCode] || [];
+}
 
 function formsForMenu(mod: AuthModulePayload, m: CatalogItem) {
   return mod.forms.filter((row) => row.item.label === m.name);
