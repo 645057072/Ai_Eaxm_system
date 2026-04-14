@@ -1,6 +1,33 @@
 <template>
   <el-card>
     <div class="toolbar">
+      <el-input
+        v-model="filterTitle"
+        clearable
+        placeholder="试卷名称"
+        style="width: 150px"
+        @keyup.enter="doSearch"
+      />
+      <el-input
+        v-model="filterCourse"
+        clearable
+        placeholder="课程"
+        style="width: 130px"
+        @keyup.enter="doSearch"
+      />
+      <el-input
+        v-model="filterEnterprise"
+        clearable
+        placeholder="所属企业"
+        style="width: 150px"
+        @keyup.enter="doSearch"
+      />
+      <el-select v-model="filterPaperType" clearable placeholder="试卷类型" style="width: 120px">
+        <el-option label="正式" value="formal" />
+        <el-option label="模拟" value="mock" />
+        <el-option label="练习" value="practice" />
+      </el-select>
+      <el-button type="primary" @click="doSearch">查询</el-button>
       <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建试卷</el-button>
     </div>
     <el-table :data="rows">
@@ -66,12 +93,17 @@
         <el-form-item label="关联课程" required>
           <el-select
             v-model="form.course_id"
-            placeholder="选择课程（请先选企业）"
+            placeholder="选择课程（请先选企业，可输入名称搜索）"
             filterable
+            remote
+            reserve-keyword
             style="width: 100%"
             :disabled="auth.isAdmin && !form.enterprise_id"
+            :remote-method="remoteCourses"
+            :loading="courseLoading"
+            @visible-change="onCourseSelectVisible"
           >
-            <el-option v-for="c in courseOpts" :key="c.id" :label="c.name" :value="c.id" />
+            <el-option v-for="c in courseOpts" :key="c.id" :label="courseOptLabel(c)" :value="c.id" />
           </el-select>
         </el-form-item>
 
@@ -198,6 +230,10 @@ const rows = ref<Record<string, unknown>[]>([]);
 const total = ref(0);
 const page = ref(1);
 const limit = ref(20);
+const filterTitle = ref("");
+const filterCourse = ref("");
+const filterEnterprise = ref("");
+const filterPaperType = ref<string | undefined>();
 const dlg = ref(false);
 const createMode = ref<"single" | "batch">("single");
 
@@ -220,7 +256,9 @@ const batchForm = reactive({
   score_per: 1,
 });
 
-const courseOpts = ref<{ id: number; name: string }[]>([]);
+type CourseOpt = { id: number; name: string; enterprise?: { id: number; name: string } };
+const courseOpts = ref<CourseOpt[]>([]);
+const courseLoading = ref(false);
 const levelOpts = ref<{ id: number; level_name: string; level_code: string }[]>([]);
 
 const qTypeOpts = [
@@ -258,41 +296,89 @@ function defaultBatchRuleRows(): BatchRuleRow[] {
 const ruleRows = ref<RuleRow[]>([defaultRuleRow()]);
 const batchRuleRows = ref<BatchRuleRow[]>(defaultBatchRuleRows());
 
+function courseOptLabel(c: CourseOpt) {
+  const en = c.enterprise?.name;
+  return en ? `${c.name}（${en}）` : c.name;
+}
+
+function resolveCourseEnterpriseId(): number | undefined {
+  if (auth.isAdmin) return form.enterprise_id;
+  return auth.me?.enterprise_id ?? undefined;
+}
+
 async function load() {
   const skip = (page.value - 1) * limit.value;
-  const { data } = await listPapers({ skip, limit: limit.value });
+  const params: Record<string, unknown> = { skip, limit: limit.value };
+  const t = filterTitle.value.trim();
+  const c = filterCourse.value.trim();
+  const e = filterEnterprise.value.trim();
+  if (t) params.title_keyword = t;
+  if (c) params.course_keyword = c;
+  if (e) params.enterprise_keyword = e;
+  if (filterPaperType.value) params.paper_type_keyword = filterPaperType.value;
+  const { data } = await listPapers(params);
   total.value = data.total;
   rows.value = data.items;
 }
 
-async function reloadCoursesForEnterprise(eid: number | undefined) {
-  const params: Record<string, unknown> = { skip: 0, limit: 500 };
+function doSearch() {
+  page.value = 1;
+  void load();
+}
+
+/** 分页上限与后端 PageParams.limit 一致（≤200），避免 422 导致下拉无数据 */
+async function reloadCoursesForEnterprise(eid: number | undefined, keyword = "") {
+  const params: Record<string, unknown> = { skip: 0, limit: 200 };
+  const kw = keyword.trim();
+  if (kw) params.keyword = kw;
   if (auth.isAdmin && eid) {
     params.enterprise_id = eid;
   }
+  courseLoading.value = true;
   try {
     const { data } = await listCourses(params);
-    courseOpts.value = (data.items || []) as { id: number; name: string }[];
-    if (!courseOpts.value.some((c) => c.id === form.course_id)) {
-      form.course_id = courseOpts.value[0]?.id;
+    courseOpts.value = (data.items || []) as CourseOpt[];
+    if (form.course_id != null && !courseOpts.value.some((c) => c.id === form.course_id)) {
+      form.course_id = undefined;
     }
   } catch {
     courseOpts.value = [];
     form.course_id = undefined;
+  } finally {
+    courseLoading.value = false;
   }
 }
 
-async function loadPaperLevelsOnly() {
+async function remoteCourses(query: string) {
+  await reloadCoursesForEnterprise(resolveCourseEnterpriseId(), query);
+}
+
+function onCourseSelectVisible(visible: boolean) {
+  if (visible) void reloadCoursesForEnterprise(resolveCourseEnterpriseId(), "");
+}
+
+/** 超管按所选企业筛选等级档案；企业用户由后端按登录企业过滤 */
+async function loadPaperLevelsForForm(enterpriseId: number | undefined) {
+  const params: Record<string, unknown> = { skip: 0, limit: 200 };
+  if (auth.isAdmin && enterpriseId) {
+    params.enterprise_id = enterpriseId;
+  }
   try {
-    const { data } = await listPaperLevels({ skip: 0, limit: 500 });
+    const { data } = await listPaperLevels(params);
     levelOpts.value = (data.items || []) as { id: number; level_name: string; level_code: string }[];
+    if (form.level_id != null && !levelOpts.value.some((lv) => lv.id === form.level_id)) {
+      form.level_id = undefined;
+    }
   } catch {
     levelOpts.value = [];
   }
 }
 
 function onEnterpriseChange() {
-  void reloadCoursesForEnterprise(form.enterprise_id);
+  form.course_id = undefined;
+  form.level_id = undefined;
+  void reloadCoursesForEnterprise(form.enterprise_id, "");
+  void loadPaperLevelsForForm(form.enterprise_id);
 }
 
 function onDlgClosed() {
@@ -315,12 +401,12 @@ function openCreate() {
   batchRuleRows.value = defaultBatchRuleRows();
   if (auth.isAdmin) {
     form.enterprise_id = enterpriseOpts.value[0]?.id;
-    void reloadCoursesForEnterprise(form.enterprise_id);
   } else {
     form.enterprise_id = auth.me?.enterprise_id ?? undefined;
-    void reloadCoursesForEnterprise(undefined);
   }
   dlg.value = true;
+  void reloadCoursesForEnterprise(resolveCourseEnterpriseId(), "");
+  void loadPaperLevelsForForm(auth.isAdmin ? form.enterprise_id : undefined);
 }
 
 function addRuleRow() {
@@ -435,13 +521,12 @@ async function onDel(row: Record<string, unknown>) {
 onMounted(async () => {
   if (auth.isAdmin) {
     try {
-      const { data } = await listEnterprises({ skip: 0, limit: 500 });
+      const { data } = await listEnterprises({ skip: 0, limit: 200 });
       enterpriseOpts.value = (data.items || []) as { id: number; name: string }[];
     } catch {
       enterpriseOpts.value = [];
     }
   }
-  await loadPaperLevelsOnly();
   await load();
 });
 </script>
@@ -449,6 +534,10 @@ onMounted(async () => {
 <style scoped>
 .toolbar {
   margin-bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 .pager {
   margin-top: 12px;

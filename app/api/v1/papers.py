@@ -5,13 +5,14 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.api.deps import get_db, require_any_permission, require_permission
 from app.core.permissions import is_super_role
 from app.models.course import Course
+from app.models.enterprise import Enterprise
 from app.models.exam import ExamPaper, ExamPaperItem
 from app.models.paper_level import PaperLevel
 from app.models.user import User
@@ -75,6 +76,51 @@ def _enterprise_for_paper(p: ExamPaper) -> tuple[int | None, str | None]:
     return None, None
 
 
+def _paper_list_base_stmt():
+    """列表统计与分页共用：关联创建人、课程、课程所属企业、创建人所属企业（用于按企业名称筛选）。"""
+    ent_course = aliased(Enterprise)
+    ent_creator = aliased(Enterprise)
+    return (
+        select(ExamPaper)
+        .join(User, ExamPaper.created_by == User.id)
+        .outerjoin(Course, ExamPaper.course_id == Course.id)
+        .outerjoin(ent_course, Course.enterprise_id == ent_course.id)
+        .outerjoin(ent_creator, User.enterprise_id == ent_creator.id),
+        ent_course,
+        ent_creator,
+    )
+
+
+def _apply_paper_list_keyword_filters(
+    stmt,
+    ent_course,
+    ent_creator,
+    title_keyword: str | None,
+    course_keyword: str | None,
+    enterprise_keyword: str | None,
+    paper_type_keyword: str | None,
+):
+    t = (title_keyword or "").strip()
+    c = (course_keyword or "").strip()
+    e = (enterprise_keyword or "").strip()
+    pt = (paper_type_keyword or "").strip()
+    if t:
+        stmt = stmt.where(ExamPaper.title.like(f"%{t}%"))
+    if c:
+        stmt = stmt.where(Course.name.like(f"%{c}%"))
+    if e:
+        elike = f"%{e}%"
+        stmt = stmt.where(
+            or_(
+                ent_course.name.like(elike),
+                and_(ExamPaper.course_id.is_(None), ent_creator.name.like(elike)),
+            )
+        )
+    if pt:
+        stmt = stmt.where(ExamPaper.paper_type.like(f"%{pt}%"))
+    return stmt
+
+
 def _paper_summary(p: ExamPaper) -> PaperSummary:
     eid, ename = _enterprise_for_paper(p)
     return PaperSummary(
@@ -102,24 +148,34 @@ def list_papers(
     db: Annotated[Session, Depends(get_db)],
     current: Annotated[User, Depends(require_permission("list.paper"))],
     page: Annotated[PageParams, Depends()],
+    title_keyword: str | None = Query(default=None, description="试卷名称模糊匹配"),
+    course_keyword: str | None = Query(default=None, description="关联课程名称模糊匹配"),
+    enterprise_keyword: str | None = Query(default=None, description="所属企业名称模糊匹配"),
+    paper_type_keyword: str | None = Query(default=None, description="试卷类型模糊匹配（如 formal、mock）"),
 ) -> PageResult[PaperSummary]:
-    """本企业试卷列表。"""
+    """本企业试卷列表；支持名称、课程、企业、类型模糊筛选。"""
+    data_stmt, ent_course, ent_creator = _paper_list_base_stmt()
+    data_stmt = _apply_paper_list_keyword_filters(
+        data_stmt, ent_course, ent_creator, title_keyword, course_keyword, enterprise_keyword, paper_type_keyword
+    )
+    data_stmt = restrict_exam_paper_query_by_tenant(data_stmt, current)
+
     cnt = (
         select(func.count())
         .select_from(ExamPaper)
         .join(User, ExamPaper.created_by == User.id)
         .outerjoin(Course, ExamPaper.course_id == Course.id)
+        .outerjoin(ent_course, Course.enterprise_id == ent_course.id)
+        .outerjoin(ent_creator, User.enterprise_id == ent_creator.id)
     )
     cnt = restrict_exam_paper_query_by_tenant(cnt, current)
+    cnt = _apply_paper_list_keyword_filters(
+        cnt, ent_course, ent_creator, title_keyword, course_keyword, enterprise_keyword, paper_type_keyword
+    )
     total = db.scalar(cnt) or 0
+
     rows = db.scalars(
-        restrict_exam_paper_query_by_tenant(
-            select(ExamPaper)
-            .join(User, ExamPaper.created_by == User.id)
-            .outerjoin(Course, ExamPaper.course_id == Course.id),
-            current,
-        )
-        .options(
+        data_stmt.options(
             joinedload(ExamPaper.course).joinedload(Course.enterprise),
             joinedload(ExamPaper.paper_level),
             joinedload(ExamPaper.creator).joinedload(User.enterprise),
