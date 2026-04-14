@@ -18,6 +18,7 @@ class StudentOut(BaseModel):
     address_phone: Optional[str] = None
     remark: Optional[str] = None
     enterprise_id: Optional[int] = None
+    enterprise_name: Optional[str] = None
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: datetime

@@ -65,8 +65,14 @@
                       含下级
                     </el-checkbox>
                   </div>
-                  <div v-for="f in row.fields" :key="f.code" class="tree-line depth-3">
-                    <el-checkbox :model-value="has(f.code)" @change="(v: boolean | string | number) => toggleCode(f.code, !!v)">
+                  <div class="field-grid depth-3">
+                    <el-checkbox
+                      v-for="f in row.fields"
+                      :key="f.code"
+                      class="field-chip"
+                      :model-value="has(f.code)"
+                      @change="(v: boolean | string | number) => toggleCode(f.code, !!v)"
+                    >
                       {{ f.name }}
                     </el-checkbox>
                   </div>
@@ -92,8 +98,14 @@
                       含下级
                     </el-checkbox>
                   </div>
-                  <div v-for="f in row.fields" :key="f.code" class="tree-line depth-3">
-                    <el-checkbox :model-value="has(f.code)" @change="(v: boolean | string | number) => toggleCode(f.code, !!v)">
+                  <div class="field-grid depth-3">
+                    <el-checkbox
+                      v-for="f in row.fields"
+                      :key="f.code"
+                      class="field-chip"
+                      :model-value="has(f.code)"
+                      @change="(v: boolean | string | number) => toggleCode(f.code, !!v)"
+                    >
                       {{ f.name }}
                     </el-checkbox>
                   </div>
@@ -131,8 +143,14 @@
                     含下级
                   </el-checkbox>
                 </div>
-                <div v-for="f in row.fields" :key="f.code" class="tree-line depth-2">
-                  <el-checkbox :model-value="has(f.code)" @change="(v: boolean | string | number) => toggleCode(f.code, !!v)">
+                <div class="field-grid depth-2">
+                  <el-checkbox
+                    v-for="f in row.fields"
+                    :key="f.code"
+                    class="field-chip"
+                    :model-value="has(f.code)"
+                    @change="(v: boolean | string | number) => toggleCode(f.code, !!v)"
+                  >
                     {{ f.name }}
                   </el-checkbox>
                 </div>
@@ -158,8 +176,14 @@
                     含下级
                   </el-checkbox>
                 </div>
-                <div v-for="f in row.fields" :key="f.code" class="tree-line depth-2">
-                  <el-checkbox :model-value="has(f.code)" @change="(v: boolean | string | number) => toggleCode(f.code, !!v)">
+                <div class="field-grid depth-2">
+                  <el-checkbox
+                    v-for="f in row.fields"
+                    :key="f.code"
+                    class="field-chip"
+                    :model-value="has(f.code)"
+                    @change="(v: boolean | string | number) => toggleCode(f.code, !!v)"
+                  >
                     {{ f.name }}
                   </el-checkbox>
                 </div>
@@ -436,6 +460,27 @@ onActivated(() => {
   padding-left: 60px;
   border-left: 2px solid #e2e8f0;
   margin-left: 20px;
+}
+.field-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 6px 0 6px 8px;
+  align-items: center;
+}
+.field-grid.depth-2 {
+  padding-left: 36px;
+  border-left: 2px solid #e2e8f0;
+  margin-left: 10px;
+}
+.field-grid.depth-3 {
+  padding-left: 60px;
+  border-left: 2px solid #e2e8f0;
+  margin-left: 20px;
+}
+.field-chip :deep(.el-checkbox__label) {
+  font-size: 12px;
+  color: #334155;
 }
 .lf-wrap {
   margin-bottom: 8px;

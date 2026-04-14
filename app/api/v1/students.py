@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, require_permission
 from app.core.config import get_settings
 from app.core.permissions import is_super_role
+from app.models.enterprise import Enterprise
 from app.models.student import Student
 from app.models.user import User
 from app.schemas.common import PageParams, PageResult
@@ -69,6 +70,7 @@ def list_students(
     student_keyword: str | None = Query(default=None, description="学员编号模糊匹配"),
     name_keyword: str | None = Query(default=None, description="姓名模糊匹配"),
     company_keyword: str | None = Query(default=None, description="所属公司模糊匹配"),
+    enterprise_id: int | None = Query(default=None, description="按所属企业筛选（超管可用）"),
 ) -> PageResult[StudentOut]:
     """学员列表：支持编号/姓名/公司模糊筛选。"""
     conds: list = []
@@ -81,18 +83,25 @@ def list_students(
         conds.append(Student.full_name.like(f"%{nm}%"))
     if co:
         conds.append(Student.company_name.like(f"%{co}%"))
+    if enterprise_id is not None and is_super_role(current):
+        conds.append(Student.enterprise_id == enterprise_id)
     w = and_(*conds) if conds else None
 
-    cnt = select(func.count()).select_from(Student)
-    q = select(Student)
+    cnt = select(func.count()).select_from(Student).outerjoin(Enterprise, Student.enterprise_id == Enterprise.id)
+    q = select(Student, Enterprise.name).outerjoin(Enterprise, Student.enterprise_id == Enterprise.id)
     q = _restrict_students_query_by_tenant(q, current)
     cnt = _restrict_students_query_by_tenant(cnt, current)
     if w is not None:
         q = q.where(w)
         cnt = cnt.where(w)
     total = db.scalar(cnt) or 0
-    rows = db.scalars(q.offset(page.skip).limit(page.limit).order_by(Student.id.desc())).all()
-    return PageResult[StudentOut](total=int(total), items=[StudentOut.model_validate(r) for r in rows])
+    rows = db.execute(q.offset(page.skip).limit(page.limit).order_by(Student.id.desc())).all()
+    items: list[StudentOut] = []
+    for stu, ename in rows:
+        out = StudentOut.model_validate(stu)
+        out.enterprise_name = ename
+        items.append(out)
+    return PageResult[StudentOut](total=int(total), items=items)
 
 
 @router.post("", response_model=StudentOut)

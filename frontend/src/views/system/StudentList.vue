@@ -6,6 +6,17 @@
       </template>
 
       <div class="page-list-toolbar toolbar">
+        <el-select
+          v-if="auth.isAdmin"
+          v-model="filterEnterpriseId"
+          clearable
+          filterable
+          placeholder="所属企业"
+          style="width: 180px"
+          @change="doSearch"
+        >
+          <el-option v-for="e in enterpriseOpts" :key="e.id" :label="e.name" :value="e.id" />
+        </el-select>
         <el-input v-model="kwNo" clearable placeholder="学员编号" style="width: 160px" @keyup.enter="doSearch" />
         <el-input v-model="kwName" clearable placeholder="姓名" style="width: 140px" @keyup.enter="doSearch" />
         <el-input v-model="kwCompany" clearable placeholder="所属公司" style="width: 180px" @keyup.enter="doSearch" />
@@ -28,6 +39,7 @@
             <el-table-column prop="gender" label="性别" width="80" align="center" />
             <el-table-column prop="birth_month" label="出生年月" width="110" align="center" />
             <el-table-column prop="company_name" label="所属公司" min-width="160" show-overflow-tooltip />
+            <el-table-column v-if="auth.isAdmin" prop="enterprise_name" label="所属企业" width="160" show-overflow-tooltip />
             <el-table-column prop="phone" label="联系电话" width="140" show-overflow-tooltip />
             <el-table-column prop="id_card_no" label="身份证号" width="180" show-overflow-tooltip />
             <el-table-column prop="address_phone" label="地址电话" min-width="160" show-overflow-tooltip />
@@ -61,6 +73,11 @@
 
     <el-dialog v-model="dlg" :title="editId ? '编辑学员' : '新建学员'" width="720px" @closed="onDlgClosed">
       <el-form label-width="110px">
+        <el-form-item v-if="auth.isAdmin" label="所属企业">
+          <el-select v-model="form.enterprise_id" clearable filterable placeholder="可选" style="width: 100%">
+            <el-option v-for="e in enterpriseOpts" :key="e.id" :label="e.name" :value="e.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="学员编号" required>
           <el-input v-model="form.student_no" />
         </el-form-item>
@@ -118,6 +135,7 @@ import { onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiErrorMessage } from "@/api/http";
 import { listStudents, createStudent, patchStudent, deleteStudent, importStudents } from "@/api/students";
+import { listEnterprises } from "@/api/enterprises";
 import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
@@ -127,6 +145,9 @@ const total = ref(0);
 const page = ref(1);
 const limit = ref(15);
 
+const filterEnterpriseId = ref<number | undefined>();
+const enterpriseOpts = ref<{ id: number; name: string }[]>([]);
+
 const kwNo = ref("");
 const kwName = ref("");
 const kwCompany = ref("");
@@ -134,6 +155,7 @@ const kwCompany = ref("");
 const dlg = ref(false);
 const editId = ref<number | null>(null);
 const form = reactive({
+  enterprise_id: null as number | null,
   student_no: "",
   full_name: "",
   gender: "" as string | "",
@@ -148,6 +170,7 @@ const form = reactive({
 async function load() {
   const skip = (page.value - 1) * limit.value;
   const params: Record<string, unknown> = { skip, limit: limit.value };
+  if (auth.isAdmin && filterEnterpriseId.value) params.enterprise_id = filterEnterpriseId.value;
   const a = kwNo.value.trim();
   const b = kwName.value.trim();
   const c = kwCompany.value.trim();
@@ -181,6 +204,7 @@ function onPageSizeChange(sz: number) {
 
 function openCreate() {
   editId.value = null;
+  form.enterprise_id = auth.isAdmin ? enterpriseOpts.value[0]?.id ?? null : null;
   form.student_no = "";
   form.full_name = "";
   form.gender = "";
@@ -195,6 +219,7 @@ function openCreate() {
 
 function openEdit(row: Record<string, unknown>) {
   editId.value = row.id as number;
+  form.enterprise_id = (row.enterprise_id as number) ?? null;
   form.student_no = (row.student_no as string) || "";
   form.full_name = (row.full_name as string) || "";
   form.gender = ((row.gender as string) || "") as any;
@@ -225,6 +250,7 @@ async function save() {
     address_phone: form.address_phone.trim() || null,
     remark: form.remark.trim() || null,
   };
+  if (auth.isAdmin) body.enterprise_id = form.enterprise_id;
   try {
     if (!editId.value) await createStudent(body);
     else await patchStudent(editId.value, body);
@@ -302,6 +328,16 @@ watch([kwNo, kwName, kwCompany], () => {
 });
 
 onMounted(async () => {
+  if (auth.isAdmin) {
+    try {
+      const { data } = await listEnterprises({ skip: 0, limit: 200 });
+      enterpriseOpts.value = (data.items || []).map((e: { id: number; name: string }) => ({ id: e.id, name: e.name }));
+      filterEnterpriseId.value = enterpriseOpts.value[0]?.id;
+    } catch {
+      enterpriseOpts.value = [];
+      filterEnterpriseId.value = undefined;
+    }
+  }
   await load();
   suppressFilterWatch.value = false;
 });
