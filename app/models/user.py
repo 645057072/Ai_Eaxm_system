@@ -8,6 +8,7 @@ from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.models.student import Student
 
 if TYPE_CHECKING:
     from app.models.course import Course
@@ -62,7 +63,13 @@ class User(Base):
 
     role: Mapped["Role"] = relationship(back_populates="users", lazy="joined")
     enterprise: Mapped[Optional["Enterprise"]] = relationship("Enterprise", back_populates="users")
-    student: Mapped[Optional["Student"]] = relationship("Student", lazy="joined")
+    # 显式指定关联条件，避免部分环境下外键识别失败导致 Mapper 初始化报错
+    student: Mapped[Optional["Student"]] = relationship(
+        Student,
+        lazy="joined",
+        primaryjoin=lambda: User.student_id == Student.id,
+        foreign_keys=lambda: [User.student_id],
+    )
     questions_created: Mapped[List["Question"]] = relationship(
         "Question",
         back_populates="creator",
