@@ -3,11 +3,13 @@
     <div class="bg-grid" aria-hidden="true" />
     <div class="glow glow-a" aria-hidden="true" />
     <div class="glow glow-b" aria-hidden="true" />
+    <div class="login-brand">
+      <SystemLogo variant="login" :show-title="true" subtitle="智能考试与知识评估平台" />
+    </div>
     <el-card class="card" shadow="always">
       <template #header>
         <div class="card-title">
-          <AppEmoji name="login" size="lg" decorative />
-          <span>考试系统登录</span>
+          <span>账号登录</span>
         </div>
       </template>
       <el-form @submit.prevent="onSubmit" label-position="top">
@@ -32,6 +34,7 @@ import { isAxiosError } from "axios";
 import { ElMessage } from "element-plus";
 import { apiErrorMessage } from "@/api/http";
 import { useAuthStore } from "@/stores/auth";
+import SystemLogo from "@/components/SystemLogo.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -68,6 +71,7 @@ async function onSubmit() {
   position: relative;
   min-height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   overflow: hidden;
@@ -104,9 +108,19 @@ async function onSubmit() {
   background: radial-gradient(circle, #6b5cff 0%, transparent 70%);
 }
 
+.login-brand {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 28px;
+  max-width: 420px;
+  width: 100%;
+  padding: 0 8px;
+}
+
 .card-title {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
 }
 

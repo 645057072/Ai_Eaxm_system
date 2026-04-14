@@ -2,8 +2,7 @@
   <el-container class="layout">
     <el-aside width="256px" class="aside">
       <div class="brand">
-        <AppEmoji name="brand" size="lg" decorative />
-        <span class="brand-text">考试系统</span>
+        <SystemLogo variant="sidebar" :show-title="true" />
       </div>
       <el-menu :default-active="route.path" router>
         <el-menu-item index="/">
@@ -126,6 +125,10 @@
     </el-aside>
     <el-container>
       <el-header class="header">
+        <div class="header-brand">
+          <SystemLogo variant="header" :show-title="true" title-text="Ai 智库（ZK）" />
+        </div>
+        <div class="header-spacer" />
         <span class="who who-click" title="个人信息与显示风格" @click="profileOpen = true">
           <AppEmoji name="user" size="sm" decorative />
           {{ auth.me?.username }}（{{ auth.me?.role?.name }}）
@@ -153,6 +156,7 @@
 import { ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ProfileDialog from "@/components/ProfileDialog.vue";
+import SystemLogo from "@/components/SystemLogo.vue";
 import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
@@ -185,13 +189,19 @@ function onLogout() {
   border-bottom: 1px solid #e8ecf2;
   background: linear-gradient(135deg, #f0f7ff 0%, #ffffff 55%);
 }
-.brand-text {
-  letter-spacing: 0.02em;
+.header-brand {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.header-spacer {
+  flex: 1;
+  min-width: 8px;
 }
 .header {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 12px;
   border-bottom: 1px solid #e8ecf2;
   background: #fff;

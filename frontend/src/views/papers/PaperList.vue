@@ -22,7 +22,7 @@
         style="width: 150px"
         @keyup.enter="doSearch"
       />
-      <el-select v-model="filterPaperType" clearable placeholder="试卷类型" style="width: 120px">
+      <el-select v-model="filterPaperType" clearable placeholder="试卷类型" style="width: 120px" @change="doSearch">
         <el-option label="正式" value="formal" />
         <el-option label="模拟" value="mock" />
         <el-option label="练习" value="practice" />
@@ -40,12 +40,16 @@
       <el-table-column label="课程" min-width="120" show-overflow-tooltip>
         <template #default="{ row }">{{ (row.course_name as string) || "—" }}</template>
       </el-table-column>
-      <el-table-column prop="paper_type" label="试卷类型" width="100" />
+      <el-table-column label="试卷类型" width="100">
+        <template #default="{ row }">{{ paperTypeLabel(row.paper_type as string) }}</template>
+      </el-table-column>
       <el-table-column label="等级" width="120" show-overflow-tooltip>
         <template #default="{ row }">{{ (row.level_name as string) || "—" }}</template>
       </el-table-column>
       <el-table-column prop="duration_minutes" label="时长(分)" width="100" />
-      <el-table-column prop="total_score" label="总分" width="90" />
+      <el-table-column label="总分" width="90">
+        <template #default="{ row }">{{ formatScore(row.total_score) }}</template>
+      </el-table-column>
       <el-table-column label="操作" width="200">
         <template #default="{ row }">
           <el-button link type="primary" @click="$router.push('/papers/' + row.id)"
@@ -215,7 +219,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { listPapers, createPaper, createPapersBatch, deletePaper } from "@/api/papers";
@@ -226,6 +230,23 @@ import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
 const router = useRouter();
+
+const paperTypeLabelMap: Record<string, string> = {
+  formal: "正式",
+  mock: "模拟",
+  practice: "练习",
+};
+
+function paperTypeLabel(code: string | undefined) {
+  if (!code) return "—";
+  return paperTypeLabelMap[code] ?? code;
+}
+
+function formatScore(v: unknown) {
+  if (v == null || v === "") return "0";
+  const n = Number(v);
+  return Number.isFinite(n) ? String(n) : String(v);
+}
 const rows = ref<Record<string, unknown>[]>([]);
 const total = ref(0);
 const page = ref(1);
@@ -325,6 +346,18 @@ function doSearch() {
   page.value = 1;
   void load();
 }
+
+/** 关键字变更后短暂防抖自动查询（挂载完成后生效，避免与首次 load 重复） */
+const suppressFilterWatch = ref(true);
+let filterDebounce: ReturnType<typeof setTimeout> | null = null;
+watch([filterTitle, filterCourse, filterEnterprise], () => {
+  if (suppressFilterWatch.value) return;
+  if (filterDebounce) clearTimeout(filterDebounce);
+  filterDebounce = setTimeout(() => {
+    filterDebounce = null;
+    doSearch();
+  }, 400);
+});
 
 /** 分页上限与后端 PageParams.limit 一致（≤200），避免 422 导致下拉无数据 */
 async function reloadCoursesForEnterprise(eid: number | undefined, keyword = "") {
@@ -528,6 +561,7 @@ onMounted(async () => {
     }
   }
   await load();
+  suppressFilterWatch.value = false;
 });
 </script>
 

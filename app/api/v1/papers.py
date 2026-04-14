@@ -39,6 +39,52 @@ from app.services.paper_compose import fetch_question_pool_ids, pick_questions_f
 
 router = APIRouter()
 
+# 组卷明细表：题型展示顺序（ judge → single → multiple → fill ）
+_QTYPE_SORT_RANK: dict[str, int] = {"judge": 0, "single": 1, "multiple": 2, "fill": 3}
+
+# 列表筛选：中文试卷类型与库中取值对应，便于关键字匹配
+_PAPER_TYPE_CN_TO_CODE = {"正式": "formal", "模拟": "mock", "练习": "practice"}
+
+
+def _normalize_paper_type_keyword(kw: str | None) -> str | None:
+    if not kw:
+        return None
+    s = kw.strip()
+    if not s:
+        return None
+    return _PAPER_TYPE_CN_TO_CODE.get(s, s)
+
+
+def _like_metachar_escape(fragment: str) -> str:
+    """LIKE 通配符转义，配合 escape='\\\\' 使用。"""
+    return fragment.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _sorted_paper_items(items: list[ExamPaperItem]) -> list[ExamPaperItem]:
+    """按题型升序、同题型下题号升序排列明细。"""
+
+    def sort_key(it: ExamPaperItem) -> tuple[int, str, int, int]:
+        q = it.question
+        if q is None:
+            return (99, "", it.sort_order, it.id)
+        rank = _QTYPE_SORT_RANK.get(q.q_type, 50)
+        qn = (q.question_no or "").strip()
+        return (rank, qn, it.sort_order, it.id)
+
+    return sorted(items, key=sort_key)
+
+
+def _item_score_sum_by_paper(db: Session, paper_ids: list[int]) -> dict[int, Decimal]:
+    """各试卷小题分值合计（用于列表总分展示）。"""
+    if not paper_ids:
+        return {}
+    rows = db.execute(
+        select(ExamPaperItem.paper_id, func.coalesce(func.sum(ExamPaperItem.score), 0))
+        .where(ExamPaperItem.paper_id.in_(paper_ids))
+        .group_by(ExamPaperItem.paper_id)
+    ).all()
+    return {int(pid): Decimal(str(s or 0)) for pid, s in rows}
+
 
 def _gen_paper_no(db: Session, enterprise_id: int | None) -> str:
     """同一企业按日递增生成试卷编号。"""
@@ -103,26 +149,31 @@ def _apply_paper_list_keyword_filters(
     t = (title_keyword or "").strip()
     c = (course_keyword or "").strip()
     e = (enterprise_keyword or "").strip()
-    pt = (paper_type_keyword or "").strip()
+    pt_raw = _normalize_paper_type_keyword(paper_type_keyword)
     if t:
-        stmt = stmt.where(ExamPaper.title.like(f"%{t}%"))
+        stmt = stmt.where(ExamPaper.title.like(f"%{_like_metachar_escape(t)}%", escape="\\"))
     if c:
-        stmt = stmt.where(Course.name.like(f"%{c}%"))
+        stmt = stmt.where(Course.name.like(f"%{_like_metachar_escape(c)}%", escape="\\"))
     if e:
-        elike = f"%{e}%"
+        elike = f"%{_like_metachar_escape(e)}%"
         stmt = stmt.where(
             or_(
-                ent_course.name.like(elike),
-                and_(ExamPaper.course_id.is_(None), ent_creator.name.like(elike)),
+                ent_course.name.like(elike, escape="\\"),
+                and_(ExamPaper.course_id.is_(None), ent_creator.name.like(elike, escape="\\")),
             )
         )
-    if pt:
-        stmt = stmt.where(ExamPaper.paper_type.like(f"%{pt}%"))
+    if pt_raw:
+        code = pt_raw.strip()
+        if code in ("formal", "mock", "practice"):
+            stmt = stmt.where(ExamPaper.paper_type == code)
+        else:
+            stmt = stmt.where(ExamPaper.paper_type.like(f"%{_like_metachar_escape(code)}%", escape="\\"))
     return stmt
 
 
-def _paper_summary(p: ExamPaper) -> PaperSummary:
+def _paper_summary(p: ExamPaper, *, item_score_total: Decimal | None = None) -> PaperSummary:
     eid, ename = _enterprise_for_paper(p)
+    ts = item_score_total if item_score_total is not None else p.total_score
     return PaperSummary(
         id=p.id,
         title=p.title,
@@ -136,7 +187,7 @@ def _paper_summary(p: ExamPaper) -> PaperSummary:
         enterprise_name=ename,
         description=p.description,
         duration_minutes=p.duration_minutes,
-        total_score=p.total_score,
+        total_score=ts,
         created_by=p.created_by,
         created_at=p.created_at,
         updated_at=p.updated_at,
@@ -155,10 +206,10 @@ def list_papers(
 ) -> PageResult[PaperSummary]:
     """本企业试卷列表；支持名称、课程、企业、类型模糊筛选。"""
     data_stmt, ent_course, ent_creator = _paper_list_base_stmt()
+    data_stmt = restrict_exam_paper_query_by_tenant(data_stmt, current)
     data_stmt = _apply_paper_list_keyword_filters(
         data_stmt, ent_course, ent_creator, title_keyword, course_keyword, enterprise_keyword, paper_type_keyword
     )
-    data_stmt = restrict_exam_paper_query_by_tenant(data_stmt, current)
 
     cnt = (
         select(func.count())
@@ -184,7 +235,11 @@ def list_papers(
         .limit(page.limit)
         .order_by(ExamPaper.id.desc())
     ).all()
-    return PageResult[PaperSummary](total=int(total), items=[_paper_summary(r) for r in rows])
+    sums = _item_score_sum_by_paper(db, [r.id for r in rows])
+    return PageResult[PaperSummary](
+        total=int(total),
+        items=[_paper_summary(r, item_score_total=sums.get(r.id, Decimal("0"))) for r in rows],
+    )
 
 
 @router.post("/batch", response_model=PaperBatchOut)
@@ -386,8 +441,9 @@ def create_paper(
 
 
 def _build_paper_out(p: ExamPaper) -> PaperOut:
+    items_sorted = _sorted_paper_items(list(p.items))
     items_out: list[PaperItemOut] = []
-    for it in sorted(p.items, key=lambda x: (x.sort_order, x.id)):
+    for it in items_sorted:
         q = it.question
         items_out.append(
             PaperItemOut(
@@ -399,6 +455,7 @@ def _build_paper_out(p: ExamPaper) -> PaperOut:
                 question=QuestionOut.model_validate(q) if q else None,
             )
         )
+    agg = sum((it.score for it in items_sorted), Decimal("0"))
     return PaperOut(
         id=p.id,
         title=p.title,
@@ -411,7 +468,7 @@ def _build_paper_out(p: ExamPaper) -> PaperOut:
         composition_rules=p.composition_rules,
         description=p.description,
         duration_minutes=p.duration_minutes,
-        total_score=p.total_score,
+        total_score=agg,
         created_by=p.created_by,
         created_at=p.created_at,
         updated_at=p.updated_at,
@@ -430,6 +487,8 @@ def get_paper(
 ) -> PaperOut:
     """试卷详情（含题目项与题干）。"""
     assert_paper_in_enterprise(db, current, paper_id)
+    _recalc_total_score(db, paper_id)
+    db.commit()
     p = db.scalars(
         select(ExamPaper)
         .options(
