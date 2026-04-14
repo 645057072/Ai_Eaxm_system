@@ -188,6 +188,81 @@ def _crop_analysis_body(raw: str) -> str:
     return "\n".join(lines_out).strip()
 
 
+def _tail_looks_like_promo_fragment(tail: str) -> bool:
+    """判断从「更多」起的片段是否为广告/联系方式（用于截断，不误删题干）。"""
+    u = tail.strip()
+    if len(u) < 10:
+        return False
+    if re.search(r"1[3-9]\d{9}", u) and re.search(r"(?:微信|老师|联系|扫码)", u):
+        return True
+    if u.startswith("更多") and "联系" in u:
+        return True
+    if "更多" in u and re.search(r"(?:请联系|联系[：:]|微信)", u):
+        return True
+    return False
+
+
+def _is_promotional_only_line(line: str) -> bool:
+    """整行可视为纯广告/联系方式（整行删除，不与题干混在同一行末段时）。"""
+    t = line.strip()
+    if len(t) < 8:
+        return False
+    if t.startswith("更多"):
+        return True
+    if re.search(r"1[3-9]\d{9}", t) and re.search(r"(?:微信|老师|联系|扫码|公众号)", t):
+        return True
+    if re.search(r"请联系[：:｜|]", t) and len(t) < 500:
+        return True
+    return False
+
+
+def _strip_mixed_line_trailing_ad(line: str) -> str:
+    """一行内题干后粘连「更多…联系/手机…」时，只去掉广告尾段。"""
+    if "更多" not in line:
+        return line
+    m = re.search(r"(更多.{8,600}?(?:请联系|联系[：:]|微信|1[3-9]\d{9}).*)$", line)
+    if not m:
+        return line
+    if _tail_looks_like_promo_fragment(m.group(1)):
+        return line[: m.start()].rstrip()
+    return line
+
+
+def _strip_inline_promo_after_sentence(s: str) -> str:
+    """句读后同一字符串内粘连的广告尾（换行前）。"""
+    if not s or "更多" not in s:
+        return s
+    m = re.search(
+        r"([。！？])\s*(更多.{8,600}?(?:请联系|联系[：:]|微信|1[3-9]\d{9}).*)$",
+        s,
+        re.DOTALL,
+    )
+    if m and _tail_looks_like_promo_fragment(m.group(2)):
+        return s[: m.start(2)].rstrip()
+    return s
+
+
+def _strip_irrelevant_import_tail(s: str) -> str:
+    """去掉题干/选项/解析尾部与题库无关的广告、联系方式（先处理行内粘连，再删纯广告行）。"""
+    if not s:
+        return ""
+    s = _strip_inline_promo_after_sentence(s)
+    lines = s.splitlines()
+    if lines:
+        lines[-1] = _strip_mixed_line_trailing_ad(lines[-1])
+    while lines:
+        last = lines[-1].strip()
+        if not last:
+            lines.pop()
+            continue
+        if _is_promotional_only_line(lines[-1]):
+            lines.pop()
+            continue
+        break
+    out = "\n".join(lines).strip()
+    return _strip_inline_promo_after_sentence(out)
+
+
 def _strip_field_page_noise(s: str) -> str:
     """题干/选项/解析共用：去掉 PDF 粘连页码（整行数字、标点与问号后数字、括号后数字等）。"""
     if not s:
@@ -215,8 +290,9 @@ def _strip_analysis_page_noise(s: str) -> str:
 
 
 def _truncate_analysis(s: str) -> Optional[str]:
-    """解析入库前去掉页码噪声并截断长度。"""
+    """解析入库前去掉页码噪声、广告尾句并截断长度。"""
     s = _strip_analysis_page_noise(s)
+    s = _strip_irrelevant_import_tail(s)
     s = s.strip()
     if not s:
         return None
@@ -436,14 +512,16 @@ def parse_question_block(block: str, section_hint: Optional[str] = None) -> Opti
 
 
 def finalize_import_item(item: Dict[str, Any]) -> Dict[str, Any]:
-    """导入入库前再清一次页码噪声（题干、选项），解析已在 _truncate_analysis 中处理。"""
-    stem = _strip_field_page_noise((item.get("stem") or "").strip())
+    """导入入库前再清一次页码噪声、广告尾句（题干、选项），解析走 normalize_analysis。"""
+    stem = _strip_irrelevant_import_tail(_strip_field_page_noise((item.get("stem") or "").strip()))
     item["stem"] = _truncate_stem(stem)
     opts = item.get("options_json")
     if isinstance(opts, list):
         for o in opts:
             if isinstance(o, dict) and "text" in o:
-                o["text"] = _strip_field_page_noise(str(o.get("text") or ""))
+                o["text"] = _strip_irrelevant_import_tail(
+                    _strip_field_page_noise(str(o.get("text") or ""))
+                )
     an = item.get("analysis")
     if an:
         item["analysis"] = normalize_analysis(str(an))
