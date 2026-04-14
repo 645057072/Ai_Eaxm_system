@@ -69,20 +69,16 @@ def list_students(
     page: Annotated[PageParams, Depends()],
     student_keyword: str | None = Query(default=None, description="学员编号模糊匹配"),
     name_keyword: str | None = Query(default=None, description="姓名模糊匹配"),
-    company_keyword: str | None = Query(default=None, description="所属公司模糊匹配"),
     enterprise_id: int | None = Query(default=None, description="按所属企业筛选（超管可用）"),
 ) -> PageResult[StudentOut]:
-    """学员列表：支持编号/姓名/公司模糊筛选。"""
+    """学员列表：支持编号/姓名模糊筛选。"""
     conds: list = []
     sn = (student_keyword or "").strip()
     nm = (name_keyword or "").strip()
-    co = (company_keyword or "").strip()
     if sn:
         conds.append(Student.student_no.like(f"%{sn}%"))
     if nm:
         conds.append(Student.full_name.like(f"%{nm}%"))
-    if co:
-        conds.append(Student.company_name.like(f"%{co}%"))
     if enterprise_id is not None and is_super_role(current):
         conds.append(Student.enterprise_id == enterprise_id)
     w = and_(*conds) if conds else None
@@ -123,7 +119,6 @@ def create_student(
         full_name=body.full_name.strip(),
         gender=(body.gender or None),
         birth_month=_normalize_birth_month(body.birth_month),
-        company_name=(body.company_name or None),
         phone=(body.phone or None),
         id_card_no=(body.id_card_no or None),
         address_phone=(body.address_phone or None),

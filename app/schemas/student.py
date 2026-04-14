@@ -12,7 +12,6 @@ class StudentOut(BaseModel):
     full_name: str
     gender: Optional[str] = None
     birth_month: Optional[str] = None
-    company_name: Optional[str] = None
     phone: Optional[str] = None
     id_card_no: Optional[str] = None
     address_phone: Optional[str] = None
@@ -31,7 +30,6 @@ class StudentCreate(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=100)
     gender: Optional[str] = Field(None, max_length=10)
     birth_month: Optional[str] = Field(None, max_length=7, description="YYYY-MM")
-    company_name: Optional[str] = Field(None, max_length=200)
     phone: Optional[str] = Field(None, max_length=50)
     id_card_no: Optional[str] = Field(None, max_length=32)
     address_phone: Optional[str] = Field(None, max_length=500)
@@ -44,7 +42,6 @@ class StudentUpdate(BaseModel):
     full_name: Optional[str] = Field(None, max_length=100)
     gender: Optional[str] = Field(None, max_length=10)
     birth_month: Optional[str] = Field(None, max_length=7)
-    company_name: Optional[str] = Field(None, max_length=200)
     phone: Optional[str] = Field(None, max_length=50)
     id_card_no: Optional[str] = Field(None, max_length=32)
     address_phone: Optional[str] = Field(None, max_length=500)

@@ -19,7 +19,6 @@
         </el-select>
         <el-input v-model="kwNo" clearable placeholder="学员编号" style="width: 160px" @keyup.enter="doSearch" />
         <el-input v-model="kwName" clearable placeholder="姓名" style="width: 140px" @keyup.enter="doSearch" />
-        <el-input v-model="kwCompany" clearable placeholder="所属公司" style="width: 180px" @keyup.enter="doSearch" />
         <el-button type="primary" @click="doSearch"><AppEmoji name="search" size="sm" decorative />查询</el-button>
         <el-button v-if="auth.can('action.student.create')" type="success" @click="openCreate"
           ><AppEmoji name="add" size="sm" decorative />新建学员</el-button
@@ -38,7 +37,6 @@
             <el-table-column prop="full_name" label="姓名" width="120" show-overflow-tooltip />
             <el-table-column prop="gender" label="性别" width="80" align="center" />
             <el-table-column prop="birth_month" label="出生年月" width="110" align="center" />
-            <el-table-column prop="company_name" label="所属公司" min-width="160" show-overflow-tooltip />
             <el-table-column v-if="auth.isAdmin" prop="enterprise_name" label="所属企业" width="160" show-overflow-tooltip />
             <el-table-column prop="phone" label="联系电话" width="140" show-overflow-tooltip />
             <el-table-column prop="id_card_no" label="身份证号" width="180" show-overflow-tooltip />
@@ -94,9 +92,6 @@
         <el-form-item label="出生年月">
           <el-date-picker v-model="form.birth_month" type="month" value-format="YYYY-MM" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="所属公司">
-          <el-input v-model="form.company_name" />
-        </el-form-item>
         <el-form-item label="联系电话">
           <el-input v-model="form.phone" />
         </el-form-item>
@@ -150,7 +145,6 @@ const enterpriseOpts = ref<{ id: number; name: string }[]>([]);
 
 const kwNo = ref("");
 const kwName = ref("");
-const kwCompany = ref("");
 
 const dlg = ref(false);
 const editId = ref<number | null>(null);
@@ -160,7 +154,6 @@ const form = reactive({
   full_name: "",
   gender: "" as string | "",
   birth_month: "" as string | "",
-  company_name: "",
   phone: "",
   id_card_no: "",
   address_phone: "",
@@ -173,10 +166,8 @@ async function load() {
   if (auth.isAdmin && filterEnterpriseId.value) params.enterprise_id = filterEnterpriseId.value;
   const a = kwNo.value.trim();
   const b = kwName.value.trim();
-  const c = kwCompany.value.trim();
   if (a) params.student_keyword = a;
   if (b) params.name_keyword = b;
-  if (c) params.company_keyword = c;
   try {
     const { data } = await listStudents(params);
     total.value = data.total;
@@ -209,7 +200,6 @@ function openCreate() {
   form.full_name = "";
   form.gender = "";
   form.birth_month = "";
-  form.company_name = "";
   form.phone = "";
   form.id_card_no = "";
   form.address_phone = "";
@@ -224,7 +214,6 @@ function openEdit(row: Record<string, unknown>) {
   form.full_name = (row.full_name as string) || "";
   form.gender = ((row.gender as string) || "") as any;
   form.birth_month = ((row.birth_month as string) || "") as any;
-  form.company_name = (row.company_name as string) || "";
   form.phone = (row.phone as string) || "";
   form.id_card_no = (row.id_card_no as string) || "";
   form.address_phone = (row.address_phone as string) || "";
@@ -244,7 +233,6 @@ async function save() {
     full_name: form.full_name.trim(),
     gender: form.gender || null,
     birth_month: form.birth_month || null,
-    company_name: form.company_name.trim() || null,
     phone: form.phone.trim() || null,
     id_card_no: form.id_card_no.trim() || null,
     address_phone: form.address_phone.trim() || null,
@@ -318,7 +306,7 @@ async function submitImport() {
 /** 关键字变更后短暂防抖自动查询 */
 const suppressFilterWatch = ref(true);
 let filterDebounce: ReturnType<typeof setTimeout> | null = null;
-watch([kwNo, kwName, kwCompany], () => {
+watch([kwNo, kwName], () => {
   if (suppressFilterWatch.value) return;
   if (filterDebounce) clearTimeout(filterDebounce);
   filterDebounce = setTimeout(() => {

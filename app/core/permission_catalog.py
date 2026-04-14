@@ -91,7 +91,6 @@ CATALOG: List[CatalogItem] = [
     {"code": "field.student.full_name", "name": "姓名", "label": "字段-学员", "kind": "field"},
     {"code": "field.student.gender", "name": "性别", "label": "字段-学员", "kind": "field"},
     {"code": "field.student.birth_month", "name": "出生年月", "label": "字段-学员", "kind": "field"},
-    {"code": "field.student.company_name", "name": "所属公司", "label": "字段-学员", "kind": "field"},
     {"code": "field.student.phone", "name": "联系电话", "label": "字段-学员", "kind": "field"},
     {"code": "field.student.id_card_no", "name": "身份证号", "label": "字段-学员", "kind": "field"},
     {"code": "field.student.address_phone", "name": "地址电话", "label": "字段-学员", "kind": "field"},

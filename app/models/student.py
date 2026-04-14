@@ -20,7 +20,6 @@ class Student(Base):
     full_name: Mapped[str] = mapped_column(String(100), index=True, comment="姓名")
     gender: Mapped[Optional[str]] = mapped_column(String(10), comment="性别")
     birth_month: Mapped[Optional[str]] = mapped_column(String(7), comment="出生年月（YYYY-MM）")
-    company_name: Mapped[Optional[str]] = mapped_column(String(200), index=True, comment="所属公司")
     phone: Mapped[Optional[str]] = mapped_column(String(50), comment="联系电话")
     id_card_no: Mapped[Optional[str]] = mapped_column(String(32), comment="身份证号")
     address_phone: Mapped[Optional[str]] = mapped_column(String(500), comment="地址电话")

@@ -1,0 +1,1 @@
+import{G as r}from"./index-YuH3DRxQ.js";function o(e){return r.get("/v1/courses",{params:e})}function u(e){return r.post("/v1/courses",e)}function c(e,s){return r.patch(`/v1/courses/${e}`,s)}function n(e){return r.delete(`/v1/courses/${e}`)}export{u as c,n as d,o as l,c as p};
