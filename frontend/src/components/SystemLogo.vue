@@ -1,80 +1,114 @@
 <template>
-  <!-- 系统品牌标识：ZK 立体字标 + AI 神经节点（原创矢量），用于登录与主导航 -->
+  <!-- 品牌标识：立体 ZK 字标 + AI 神经网络环 + 玻璃拟态底板（登录/侧栏/顶栏三态） -->
   <div class="system-logo" :class="`variant-${variant}`" role="img" :aria-label="ariaLabel">
-    <svg class="mark" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <svg class="mark" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <defs>
-        <linearGradient :id="gradId" x1="10" y1="12" x2="54" y2="52" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" :stop-color="stop1" />
-          <stop offset="45%" :stop-color="stop2" />
-          <stop offset="100%" :stop-color="stop3" />
+        <linearGradient :id="faceGrad" x1="8" y1="10" x2="62" y2="64" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" :stop-color="g1" />
+          <stop offset="42%" :stop-color="g2" />
+          <stop offset="100%" :stop-color="g3" />
         </linearGradient>
-        <linearGradient :id="topHiId" gradientUnits="userSpaceOnUse" x1="11" y1="16" x2="11" y2="19">
-          <stop offset="0%" stop-color="#f0f9ff" />
-          <stop offset="100%" :stop-color="stop1" stop-opacity="0" />
+        <linearGradient :id="rimGrad" x1="36" y1="6" x2="36" y2="66" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.55" />
+          <stop offset="40%" :stop-color="g1" stop-opacity="0.35" />
+          <stop offset="100%" :stop-color="g3" stop-opacity="0.5" />
         </linearGradient>
-        <filter :id="filterId" x="-25%" y="-25%" width="150%" height="150%">
-          <feGaussianBlur in="SourceAlpha" stdDeviation="0.7" result="b" />
-          <feOffset dx="0" dy="0.45" in="b" result="o" />
+        <radialGradient :id="coreGlow" cx="36" cy="34" r="22" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" :stop-color="g1" stop-opacity="0.45" />
+          <stop offset="70%" :stop-color="g2" stop-opacity="0.12" />
+          <stop offset="100%" stop-color="transparent" />
+        </radialGradient>
+        <filter :id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="1.8" stdDeviation="1.2" flood-color="#0f172a" flood-opacity="0.35" />
+        </filter>
+        <filter :id="innerGlow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="0.6" result="b" />
           <feMerge>
-            <feMergeNode in="o" />
+            <feMergeNode in="b" />
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
       </defs>
-      <rect
-        x="5"
-        y="5"
-        width="54"
-        height="54"
-        rx="14"
-        fill="rgba(15,23,42,0.32)"
-        :stroke="`url(#${gradId})`"
-        stroke-width="2"
+
+      <!-- 圆角超椭圆底板 + 内光 -->
+      <rect        x="4"
+        y="4"
+        width="64"
+        height="64"
+        rx="18"
+        fill="rgba(15,23,42,0.2)"
+        :stroke="`url(#${rimGrad})`"
+        stroke-width="1.35"
       />
-      <g opacity="0.9" transform="translate(2.05,2.2)">
+      <rect x="7" y="7" width="58" height="58" rx="15" :fill="`url(#${coreGlow})`" />
+
+      <!-- AI 轨道：虚线环 + 节点 -->
+      <g fill="none" stroke-linecap="round" opacity="0.92">
+        <ellipse
+          cx="36"
+          cy="36"
+          rx="26"
+          ry="12"
+          :stroke="g1"
+          stroke-width="0.85"
+          stroke-dasharray="3 4"
+          transform="rotate(-18 36 36)"
+        />
+        <ellipse
+          cx="36"
+          cy="36"
+          rx="26"
+          ry="12"
+          :stroke="g2"
+          stroke-width="0.75"
+          stroke-dasharray="2 5"
+          transform="rotate(38 36 36)"
+        />
+        <path d="M22 48 Q36 56 50 46" :stroke="g3" stroke-width="0.9" opacity="0.85" />
+        <circle cx="22" cy="26" r="2.1" :fill="chipFill" :stroke="g1" stroke-width="0.6" />
+        <circle cx="50" cy="28" r="2.1" :fill="chipFill" :stroke="g2" stroke-width="0.6" />
+        <circle cx="36" cy="20" r="2.35" :fill="chipFill" :stroke="g3" stroke-width="0.65" />
+        <circle cx="30" cy="50" r="1.65" :fill="chipFill" :stroke="g1" stroke-width="0.55" />
+        <circle cx="46" cy="48" r="1.65" :fill="chipFill" :stroke="g2" stroke-width="0.55" />
+      </g>
+
+      <!-- ZK 立体：底层挤出 -->
+      <g opacity="0.88" transform="translate(2.4, 2.55)">
         <path
-          :fill="extrusionFill"
-          d="M11.5 16.2L27.3 16.2L27.3 19.3L14 29.4L27.3 29.4L27.3 32.5L11.5 32.5L11.5 29.4L24.2 19.3L11.5 19.3z M30.2 16.2H33.8V24.5L47.5 16.2H50.8L38.5 25.2L50.5 32.5H46.8L33.8 26.5V32.5H30.2V16.2z"
+          :fill="extrudeFill"
+          d="M14.2 24.5L32.6 24.5L32.6 28.2L16.8 40.2L32.6 40.2L32.6 43.8L14.2 43.8L14.2 40.2L28.8 28.2L14.2 28.2z
+ M36.2 24.5H40.4V34.2L56.2 24.5H60.2L46.2 35L59.8 43.8H55.4L40.4 36.2V43.8H36.2V24.5z"
         />
       </g>
-      <g :filter="`url(#${filterId})`">
+      <!-- ZK 面层高光 -->
+      <g :filter="`url(#${softShadow})`">
         <path
-          :fill="`url(#${gradId})`"
-          stroke="rgba(255,255,255,0.22)"
-          stroke-width="0.35"
-          d="M11.5 16.2L27.3 16.2L27.3 19.3L14 29.4L27.3 29.4L27.3 32.5L11.5 32.5L11.5 29.4L24.2 19.3L11.5 19.3z
-             M30.2 16.2H33.8V24.5L47.5 16.2H50.8L38.5 25.2L50.5 32.5H46.8L33.8 26.5V32.5H30.2V16.2z"
+          :fill="`url(#${faceGrad})`"
+          stroke="rgba(255,255,255,0.28)"
+          stroke-width="0.4"
+          d="M14.2 24.5L32.6 24.5L32.6 28.2L16.8 40.2L32.6 40.2L32.6 43.8L14.2 43.8L14.2 40.2L28.8 28.2L14.2 28.2z
+             M36.2 24.5H40.4V34.2L56.2 24.5H60.2L46.2 35L59.8 43.8H55.4L40.4 36.2V43.8H36.2V24.5z"
         />
-      </g>
-      <path :fill="`url(#${topHiId})`" opacity="0.55" d="M12 16.2H26.8V17.35H12z M30.4 16.2H33.6V17.35H30.4z" />
-      <g stroke-linecap="round">
-        <path
-          d="M27.6 22C30 20.6 34 20.6 36.4 22"
-          fill="none"
-          stroke="#67e8f9"
-          stroke-width="1.05"
-          opacity="0.9"
-        />
-        <path
-          d="M32.4 25.2C33.8 27.8 37 29.5 40.2 30.5"
-          fill="none"
-          stroke="#c4b5fd"
-          stroke-width="0.95"
-          opacity="0.82"
-        />
-        <circle cx="27.5" cy="22.1" r="2" fill="#e0f2fe" :stroke="stop1" stroke-width="0.85" />
-        <circle cx="36.5" cy="22.1" r="2" fill="#e0e7ff" :stroke="stop2" stroke-width="0.85" />
-        <circle cx="32" cy="26.6" r="2.2" fill="#fae8ff" :stroke="stop3" stroke-width="0.85" />
-        <circle cx="23.6" cy="30.4" r="1.5" fill="#cffafe" :stroke="stop1" stroke-width="0.7" />
-        <circle cx="40.4" cy="31" r="1.5" fill="#ede9fe" :stroke="stop3" stroke-width="0.7" />
       </g>
       <path
-        d="M13 50.5h5.5m7 0h5.5m7 0h5.5m7 0h5.5"
-        :stroke="tickColor"
-        stroke-width="1.35"
-        stroke-linecap="round"
-        opacity="0.65"
+        fill="rgba(255,255,255,0.42)"
+        opacity="0.55"
+        d="M15 24.5H31.5V25.9H15z M36.4 24.5H40.2V25.9H36.4z"
       />
+
+      <!-- AI 角标 -->
+      <g :filter="`url(#${innerGlow})`">
+        <path
+          d="M52 10L62 10L62 20Q57 22 52 18z"
+          :fill="badgeFill"
+          :stroke="g1"
+          stroke-width="0.5"
+          opacity="0.95"
+        />
+        <text x="54.5" y="17.5" font-size="6.5" font-weight="800" fill="white" font-family="system-ui,sans-serif">
+          AI
+        </text>
+      </g>
     </svg>
     <div v-if="showTitle" class="titles">
       <span class="name">{{ displayTitle }}</span>
@@ -88,7 +122,6 @@ import { computed, useId } from "vue";
 
 const props = withDefaults(
   defineProps<{
-    /** login：登录页大图标；sidebar：侧栏；header：顶栏紧凑 */
     variant?: "login" | "sidebar" | "header";
     showTitle?: boolean;
     titleText?: string;
@@ -103,9 +136,11 @@ const props = withDefaults(
 );
 
 const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-const gradId = computed(() => `zk-grad-${uid}`);
-const topHiId = computed(() => `zk-top-${uid}`);
-const filterId = computed(() => `zk-soft-${uid}`);
+const faceGrad = computed(() => `zk-face-${uid}`);
+const rimGrad = computed(() => `zk-rim-${uid}`);
+const coreGlow = computed(() => `zk-core-${uid}`);
+const softShadow = computed(() => `zk-sh-${uid}`);
+const innerGlow = computed(() => `zk-in-${uid}`);
 
 const ariaLabel = "Ai 智库 ZK 考试系统";
 
@@ -115,14 +150,13 @@ const displayTitle = computed(() => props.titleText ?? defaultTitle);
 
 const lightBg = computed(() => props.variant === "sidebar" || props.variant === "header");
 
-const stop1 = computed(() => (lightBg.value ? "#0284c7" : "#38bdf8"));
-const stop2 = computed(() => (lightBg.value ? "#4f46e5" : "#6366f1"));
-const stop3 = computed(() => (lightBg.value ? "#7c3aed" : "#a78bfa"));
+const g1 = computed(() => (lightBg.value ? "#0369a1" : "#38bdf8"));
+const g2 = computed(() => (lightBg.value ? "#4338ca" : "#818cf8"));
+const g3 = computed(() => (lightBg.value ? "#6d28d9" : "#c084fc"));
 
-const tickColor = computed(() => (lightBg.value ? "#64748b" : "#94a3b8"));
-
-/** 立体暗层填充（与主渐变同色系、压暗） */
-const extrusionFill = computed(() => (lightBg.value ? "#312e81" : "#1e1b4b"));
+const extrudeFill = computed(() => (lightBg.value ? "#1e1b4b" : "#0f172a"));
+const chipFill = computed(() => (lightBg.value ? "#f8fafc" : "#e2e8f0"));
+const badgeFill = computed(() => (lightBg.value ? "#0ea5e9" : "#0284c7"));
 </script>
 
 <style scoped>
@@ -138,19 +172,21 @@ const extrusionFill = computed(() => (lightBg.value ? "#312e81" : "#1e1b4b"));
 }
 
 .variant-login .mark {
-  width: 72px;
-  height: 72px;
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 16px rgba(56, 189, 248, 0.42));
+  width: 80px;
+  height: 80px;
+  filter: drop-shadow(0 4px 12px rgba(15, 23, 42, 0.45)) drop-shadow(0 0 24px rgba(56, 189, 248, 0.35));
 }
 
 .variant-sidebar .mark {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
+  filter: drop-shadow(0 2px 6px rgba(15, 23, 42, 0.12));
 }
 
 .variant-header .mark {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
+  filter: drop-shadow(0 1px 4px rgba(15, 23, 42, 0.1));
 }
 
 .titles {
@@ -165,20 +201,21 @@ const extrusionFill = computed(() => (lightBg.value ? "#312e81" : "#1e1b4b"));
 }
 
 .variant-login .name {
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  line-height: 1.35;
-  background: linear-gradient(120deg, #7dd3fc 0%, #a5b4fc 45%, #c4b5fd 100%);
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  background: linear-gradient(115deg, #7dd3fc 0%, #a5b4fc 38%, #e879f9 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .variant-login .sub {
-  font-size: 0.8rem;
-  color: rgba(148, 212, 255, 0.85);
-  letter-spacing: 0.06em;
+  font-size: 0.82rem;
+  color: rgba(186, 230, 253, 0.9);
+  letter-spacing: 0.08em;
 }
 
 .variant-sidebar .titles,
@@ -187,12 +224,15 @@ const extrusionFill = computed(() => (lightBg.value ? "#312e81" : "#1e1b4b"));
 }
 
 .variant-sidebar .name {
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: #0f172a;
-  letter-spacing: 0.02em;
+  font-size: 0.9rem;
+  font-weight: 800;
+  background: linear-gradient(90deg, #0f172a 0%, #334155 55%, #4f46e5 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: 0.03em;
   line-height: 1.3;
-  max-width: 198px;
+  max-width: 200px;
 }
 
 .variant-sidebar .sub {
@@ -202,9 +242,13 @@ const extrusionFill = computed(() => (lightBg.value ? "#312e81" : "#1e1b4b"));
 
 .variant-header .name {
   font-size: 0.88rem;
-  font-weight: 700;
-  color: #1e293b;
+  font-weight: 800;
+  color: #0f172a;
   letter-spacing: 0.02em;
+  background: linear-gradient(90deg, #0f172a, #4338ca);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .variant-header {

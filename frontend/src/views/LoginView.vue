@@ -4,7 +4,7 @@
     <div class="glow glow-a" aria-hidden="true" />
     <div class="glow glow-b" aria-hidden="true" />
     <div class="login-brand">
-      <SystemLogo variant="login" :show-title="true" subtitle="智能考试与知识评估平台" />
+      <SystemLogo variant="login" :show-title="true" subtitle="智辅组卷 · 可信评测" />
     </div>
     <el-card class="card" shadow="always">
       <template #header>

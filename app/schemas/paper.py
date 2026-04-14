@@ -41,6 +41,8 @@ class PaperSummary(BaseModel):
     description: Optional[str] = None
     duration_minutes: int
     total_score: Decimal
+    item_count: int = Field(0, description="已组卷题目数量，大于0表示已组卷")
+    session_ref_count: int = Field(0, description="引用该试卷的考试场次数量")
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: datetime

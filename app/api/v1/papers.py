@@ -6,14 +6,14 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.api.deps import get_db, require_any_permission, require_permission
 from app.core.permissions import is_super_role
 from app.models.course import Course
 from app.models.enterprise import Enterprise
-from app.models.exam import ExamPaper, ExamPaperItem
+from app.models.exam import ExamPaper, ExamPaperItem, ExamSession
 from app.models.paper_level import PaperLevel
 from app.models.user import User
 from app.schemas.common import PageParams, PageResult
@@ -84,6 +84,30 @@ def _item_score_sum_by_paper(db: Session, paper_ids: list[int]) -> dict[int, Dec
         .group_by(ExamPaperItem.paper_id)
     ).all()
     return {int(pid): Decimal(str(s or 0)) for pid, s in rows}
+
+
+def _item_count_by_paper(db: Session, paper_ids: list[int]) -> dict[int, int]:
+    """各试卷已组卷题目条数。"""
+    if not paper_ids:
+        return {}
+    rows = db.execute(
+        select(ExamPaperItem.paper_id, func.count())
+        .where(ExamPaperItem.paper_id.in_(paper_ids))
+        .group_by(ExamPaperItem.paper_id)
+    ).all()
+    return {int(pid): int(c or 0) for pid, c in rows}
+
+
+def _session_ref_count_by_paper(db: Session, paper_ids: list[int]) -> dict[int, int]:
+    """各试卷被考试场次引用的次数。"""
+    if not paper_ids:
+        return {}
+    rows = db.execute(
+        select(ExamSession.paper_id, func.count())
+        .where(ExamSession.paper_id.in_(paper_ids))
+        .group_by(ExamSession.paper_id)
+    ).all()
+    return {int(pid): int(c or 0) for pid, c in rows}
 
 
 def _gen_paper_no(db: Session, enterprise_id: int | None) -> str:
@@ -171,7 +195,13 @@ def _apply_paper_list_keyword_filters(
     return stmt
 
 
-def _paper_summary(p: ExamPaper, *, item_score_total: Decimal | None = None) -> PaperSummary:
+def _paper_summary(
+    p: ExamPaper,
+    *,
+    item_score_total: Decimal | None = None,
+    item_count: int = 0,
+    session_ref_count: int = 0,
+) -> PaperSummary:
     eid, ename = _enterprise_for_paper(p)
     ts = item_score_total if item_score_total is not None else p.total_score
     return PaperSummary(
@@ -188,6 +218,8 @@ def _paper_summary(p: ExamPaper, *, item_score_total: Decimal | None = None) -> 
         description=p.description,
         duration_minutes=p.duration_minutes,
         total_score=ts,
+        item_count=item_count,
+        session_ref_count=session_ref_count,
         created_by=p.created_by,
         created_at=p.created_at,
         updated_at=p.updated_at,
@@ -235,10 +267,21 @@ def list_papers(
         .limit(page.limit)
         .order_by(ExamPaper.id.desc())
     ).all()
-    sums = _item_score_sum_by_paper(db, [r.id for r in rows])
+    pids = [r.id for r in rows]
+    sums = _item_score_sum_by_paper(db, pids)
+    ic = _item_count_by_paper(db, pids)
+    sc = _session_ref_count_by_paper(db, pids)
     return PageResult[PaperSummary](
         total=int(total),
-        items=[_paper_summary(r, item_score_total=sums.get(r.id, Decimal("0"))) for r in rows],
+        items=[
+            _paper_summary(
+                r,
+                item_score_total=sums.get(r.id, Decimal("0")),
+                item_count=ic.get(r.id, 0),
+                session_ref_count=sc.get(r.id, 0),
+            )
+            for r in rows
+        ],
     )
 
 
@@ -353,7 +396,13 @@ def create_papers_batch(
             .where(ExamPaper.id == p.id)
         ).first()
         if pr is not None:
-            summaries.append(_paper_summary(pr))
+            icn = (
+                db.scalar(
+                    select(func.count()).select_from(ExamPaperItem).where(ExamPaperItem.paper_id == pr.id)
+                )
+                or 0
+            )
+            summaries.append(_paper_summary(pr, item_count=int(icn)))
     return PaperBatchOut(items=summaries)
 
 
@@ -556,7 +605,38 @@ def delete_paper(
     current: Annotated[User, Depends(require_permission("action.paper.manage"))],
 ) -> None:
     p = assert_paper_in_enterprise(db, current, paper_id)
+    n_items = (
+        db.scalar(
+            select(func.count()).select_from(ExamPaperItem).where(ExamPaperItem.paper_id == paper_id)
+        )
+        or 0
+    )
+    if int(n_items) > 0:
+        raise HTTPException(status_code=409, detail="已组卷的试卷不可删除，请先反组卷")
+    n_sess = (
+        db.scalar(select(func.count()).select_from(ExamSession).where(ExamSession.paper_id == paper_id)) or 0
+    )
+    if int(n_sess) > 0:
+        raise HTTPException(status_code=409, detail="试卷已被考试场次引用，不可删除")
     db.delete(p)
+    db.commit()
+
+
+@router.delete("/{paper_id}/items", status_code=204)
+def clear_paper_items(
+    paper_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[User, Depends(require_permission("action.paper.manage"))],
+) -> None:
+    """反组卷：清空试卷内全部题目；已被考试场次引用的试卷不允许清空。"""
+    assert_paper_in_enterprise(db, current, paper_id)
+    n_sess = (
+        db.scalar(select(func.count()).select_from(ExamSession).where(ExamSession.paper_id == paper_id)) or 0
+    )
+    if int(n_sess) > 0:
+        raise HTTPException(status_code=409, detail="试卷已被考试场次引用，无法反组卷")
+    db.execute(delete(ExamPaperItem).where(ExamPaperItem.paper_id == paper_id))
+    _recalc_total_score(db, paper_id)
     db.commit()
 
 

@@ -24,6 +24,11 @@ export function deletePaper(id: number) {
   return http.delete(`/v1/papers/${id}`);
 }
 
+/** 反组卷：清空试卷全部题目（场次引用中的试卷会409） */
+export function clearPaperItems(paperId: number) {
+  return http.delete(`/v1/papers/${paperId}/items`);
+}
+
 export function addPaperItem(paperId: number, body: Record<string, unknown>) {
   return http.post(`/v1/papers/${paperId}/items`, body);
 }
