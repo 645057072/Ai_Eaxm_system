@@ -80,7 +80,8 @@ def upgrade() -> None:
                 "enable_date",
                 sa.Date(),
                 nullable=False,
-                server_default=sa.text("CURRENT_DATE"),
+                # MySQL 兼容：避免 DEFAULT CURRENT_DATE 语法错误，使用 DEFAULT (CURDATE())
+                server_default=sa.text("(CURDATE())"),
                 comment="启用日期",
             ),
         )
