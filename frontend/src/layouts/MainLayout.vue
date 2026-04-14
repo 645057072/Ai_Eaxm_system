@@ -123,7 +123,7 @@
         </el-menu-item>
       </el-menu>
     </el-aside>
-    <el-container>
+    <el-container class="layout-main-area">
       <el-header class="header">
         <div class="header-brand">
           <SystemLogo variant="header" :show-title="true" title-text="Ai 智库（ZK）" />
@@ -173,6 +173,11 @@ function onLogout() {
 <style scoped>
 .layout {
   height: 100vh;
+}
+.layout-main-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
 }
 .aside {
   border-right: 1px solid #e4e8ef;
@@ -232,5 +237,9 @@ function onLogout() {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+.main {
+  flex: 1;
+  min-height: 0;
 }
 </style>

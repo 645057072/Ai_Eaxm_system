@@ -1,6 +1,12 @@
 <template>
-  <el-card>
-    <div class="toolbar">
+  <div class="fill-height">
+    <el-card class="page-list-card">
+      <template #header>
+        <div class="page-list-card-title">
+          <AppEmoji name="questionManage" size="sm" decorative />题库管理
+        </div>
+      </template>
+      <div class="page-list-toolbar toolbar">
       <el-select v-model="filterType" clearable placeholder="题型" style="width: 140px">
         <el-option label="判断" value="judge" />
         <el-option label="单选" value="single" />
@@ -69,7 +75,9 @@
         </template>
       </el-dropdown>
     </div>
-    <el-table :data="rows" @selection-change="onSelectionChange">
+    <div class="page-list-body">
+      <div class="page-list-table">
+        <el-table :data="rows" height="100%" @selection-change="onSelectionChange">
       <el-table-column type="selection" width="48" />
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="question_no" label="题号" width="130" show-overflow-tooltip />
@@ -102,17 +110,20 @@
         </template>
       </el-table-column>
     </el-table>
-    <div class="pager">
-      <el-pagination
-        background
-        layout="total, sizes, prev, pager, next"
-        :total="total"
-        :page-size="limit"
-        :page-sizes="[50, 100, 200]"
-        @size-change="onPageSizeChange"
-        @current-change="onPageChange"
-      />
+      </div>
+      <div class="page-list-pager">
+        <el-pagination
+          background
+          layout="total, sizes, prev, pager, next"
+          :total="total"
+          :page-size="limit"
+          :page-sizes="[50, 100, 200]"
+          @size-change="onPageSizeChange"
+          @current-change="onPageChange"
+        />
+      </div>
     </div>
+    </el-card>
 
     <el-dialog v-model="dlg" :title="form.id ? '编辑题目' : '新建题目'" width="640px">
       <el-form label-width="100px">
@@ -334,7 +345,7 @@
         <el-button type="primary" :loading="batchDifficultyLoading" @click="submitBatchDifficulty">确定</el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">

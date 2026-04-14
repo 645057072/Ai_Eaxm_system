@@ -1,41 +1,79 @@
 <template>
-  <!-- 系统品牌标识：原创 SVG（知识节点网络 + 芯片轮廓），用于登录与主导航 -->
+  <!-- 系统品牌标识：ZK 立体字标 + AI 神经节点（原创矢量），用于登录与主导航 -->
   <div class="system-logo" :class="`variant-${variant}`" role="img" :aria-label="ariaLabel">
     <svg class="mark" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <defs>
-        <linearGradient :id="gradId" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+        <linearGradient :id="gradId" x1="10" y1="12" x2="54" y2="52" gradientUnits="userSpaceOnUse">
           <stop offset="0%" :stop-color="stop1" />
-          <stop offset="55%" :stop-color="stop2" />
+          <stop offset="45%" :stop-color="stop2" />
           <stop offset="100%" :stop-color="stop3" />
         </linearGradient>
+        <linearGradient :id="topHiId" gradientUnits="userSpaceOnUse" x1="11" y1="16" x2="11" y2="19">
+          <stop offset="0%" stop-color="#f0f9ff" />
+          <stop offset="100%" :stop-color="stop1" stop-opacity="0" />
+        </linearGradient>
+        <filter :id="filterId" x="-25%" y="-25%" width="150%" height="150%">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="0.7" result="b" />
+          <feOffset dx="0" dy="0.45" in="b" result="o" />
+          <feMerge>
+            <feMergeNode in="o" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
       </defs>
       <rect
-        x="6"
-        y="6"
-        width="52"
-        height="52"
+        x="5"
+        y="5"
+        width="54"
+        height="54"
         rx="14"
-        fill="none"
+        fill="rgba(15,23,42,0.32)"
         :stroke="`url(#${gradId})`"
-        stroke-width="2.2"
+        stroke-width="2"
       />
-      <circle cx="22" cy="26" r="3.5" :fill="`url(#${gradId})`" />
-      <circle cx="42" cy="26" r="3.5" :fill="`url(#${gradId})`" />
-      <circle cx="32" cy="40" r="4.2" :fill="`url(#${gradId})`" opacity="0.95" />
+      <g opacity="0.9" transform="translate(2.05,2.2)">
+        <path
+          :fill="extrusionFill"
+          d="M11.5 16.2L27.3 16.2L27.3 19.3L14 29.4L27.3 29.4L27.3 32.5L11.5 32.5L11.5 29.4L24.2 19.3L11.5 19.3z M30.2 16.2H33.8V24.5L47.5 16.2H50.8L38.5 25.2L50.5 32.5H46.8L33.8 26.5V32.5H30.2V16.2z"
+        />
+      </g>
+      <g :filter="`url(#${filterId})`">
+        <path
+          :fill="`url(#${gradId})`"
+          stroke="rgba(255,255,255,0.22)"
+          stroke-width="0.35"
+          d="M11.5 16.2L27.3 16.2L27.3 19.3L14 29.4L27.3 29.4L27.3 32.5L11.5 32.5L11.5 29.4L24.2 19.3L11.5 19.3z
+             M30.2 16.2H33.8V24.5L47.5 16.2H50.8L38.5 25.2L50.5 32.5H46.8L33.8 26.5V32.5H30.2V16.2z"
+        />
+      </g>
+      <path :fill="`url(#${topHiId})`" opacity="0.55" d="M12 16.2H26.8V17.35H12z M30.4 16.2H33.6V17.35H30.4z" />
+      <g stroke-linecap="round">
+        <path
+          d="M27.6 22C30 20.6 34 20.6 36.4 22"
+          fill="none"
+          stroke="#67e8f9"
+          stroke-width="1.05"
+          opacity="0.9"
+        />
+        <path
+          d="M32.4 25.2C33.8 27.8 37 29.5 40.2 30.5"
+          fill="none"
+          stroke="#c4b5fd"
+          stroke-width="0.95"
+          opacity="0.82"
+        />
+        <circle cx="27.5" cy="22.1" r="2" fill="#e0f2fe" :stroke="stop1" stroke-width="0.85" />
+        <circle cx="36.5" cy="22.1" r="2" fill="#e0e7ff" :stroke="stop2" stroke-width="0.85" />
+        <circle cx="32" cy="26.6" r="2.2" fill="#fae8ff" :stroke="stop3" stroke-width="0.85" />
+        <circle cx="23.6" cy="30.4" r="1.5" fill="#cffafe" :stroke="stop1" stroke-width="0.7" />
+        <circle cx="40.4" cy="31" r="1.5" fill="#ede9fe" :stroke="stop3" stroke-width="0.7" />
+      </g>
       <path
-        d="M22 26 L32 40 L42 26"
-        fill="none"
-        :stroke="`url(#${gradId})`"
-        stroke-width="1.8"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
-      <path
-        d="M14 50h6m6 0h6m6 0h6m6 0h6"
+        d="M13 50.5h5.5m7 0h5.5m7 0h5.5m7 0h5.5"
         :stroke="tickColor"
-        stroke-width="1.5"
+        stroke-width="1.35"
         stroke-linecap="round"
-        opacity="0.72"
+        opacity="0.65"
       />
     </svg>
     <div v-if="showTitle" class="titles">
@@ -66,6 +104,8 @@ const props = withDefaults(
 
 const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
 const gradId = computed(() => `zk-grad-${uid}`);
+const topHiId = computed(() => `zk-top-${uid}`);
+const filterId = computed(() => `zk-soft-${uid}`);
 
 const ariaLabel = "Ai 智库 ZK 考试系统";
 
@@ -80,6 +120,9 @@ const stop2 = computed(() => (lightBg.value ? "#4f46e5" : "#6366f1"));
 const stop3 = computed(() => (lightBg.value ? "#7c3aed" : "#a78bfa"));
 
 const tickColor = computed(() => (lightBg.value ? "#64748b" : "#94a3b8"));
+
+/** 立体暗层填充（与主渐变同色系、压暗） */
+const extrusionFill = computed(() => (lightBg.value ? "#312e81" : "#1e1b4b"));
 </script>
 
 <style scoped>
@@ -97,7 +140,7 @@ const tickColor = computed(() => (lightBg.value ? "#64748b" : "#94a3b8"));
 .variant-login .mark {
   width: 72px;
   height: 72px;
-  filter: drop-shadow(0 0 14px rgba(56, 189, 248, 0.38));
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 16px rgba(56, 189, 248, 0.42));
 }
 
 .variant-sidebar .mark {

@@ -1,9 +1,15 @@
 <template>
-  <el-card>
-    <div class="toolbar">
+  <div class="fill-height">
+    <el-card class="page-list-card">
+      <template #header>
+        <div class="page-list-card-title"><AppEmoji name="sessions" size="sm" decorative />考试场次</div>
+      </template>
+      <div class="page-list-toolbar toolbar">
       <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建场次</el-button>
     </div>
-    <el-table :data="rows">
+    <div class="page-list-body">
+      <div class="page-list-table">
+        <el-table :data="rows" height="100%">
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="title" label="标题" />
       <el-table-column prop="paper_id" label="试卷ID" width="90" />
@@ -23,15 +29,18 @@
         </template>
       </el-table-column>
     </el-table>
-    <div class="pager">
-      <el-pagination
-        background
-        layout="prev, pager, next"
-        :total="total"
-        :page-size="limit"
-        @current-change="(p: number) => { page = p; load(); }"
-      />
+      </div>
+      <div class="page-list-pager">
+        <el-pagination
+          background
+          layout="prev, pager, next"
+          :total="total"
+          :page-size="limit"
+          @current-change="(p: number) => { page = p; load(); }"
+        />
+      </div>
     </div>
+    </el-card>
 
     <el-dialog v-model="dlg" :title="form.id ? '编辑场次' : '新建场次'" width="520px">
       <el-form label-width="100px">
@@ -49,7 +58,7 @@
         <el-button type="primary" @click="save">保存</el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">

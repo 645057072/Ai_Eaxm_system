@@ -1,6 +1,10 @@
 <template>
-  <el-card>
-    <div class="toolbar">
+  <div class="fill-height">
+    <el-card class="page-list-card">
+      <template #header>
+        <div class="page-list-card-title"><AppEmoji name="userInfo" size="sm" decorative />用户信息</div>
+      </template>
+      <div class="page-list-toolbar toolbar">
       <el-input v-model="keyword" placeholder="用户名关键词" clearable style="width: 220px" />
       <el-button v-if="auth.can('list.user')" type="primary" @click="load"
         ><AppEmoji name="search" size="sm" decorative />查询</el-button
@@ -9,12 +13,14 @@
         ><AppEmoji name="add" size="sm" decorative />新建用户</el-button
       >
     </div>
-    <el-table :data="rows" style="width: 100%">
+    <div class="page-list-body">
+      <div class="page-list-table">
+        <el-table :data="rows" height="100%" style="width: 100%">
       <el-table-column v-if="auth.can('list.user')" prop="id" label="ID" width="80" />
       <el-table-column v-if="auth.can('field.user.username')" prop="username" label="用户名" />
       <el-table-column v-if="auth.can('field.user.full_name')" prop="full_name" label="姓名" />
       <el-table-column v-if="auth.can('field.user.enterprise')" label="所属企业" min-width="120" show-overflow-tooltip>
-        <template #default="{ row }">{{ (row.enterprise as { name?: string } | null)?.name || "—" }}</template>
+        <template #default="{ row }">{{ rowEnterpriseName(row) }}</template>
       </el-table-column>
       <el-table-column v-if="auth.can('field.user.role')" label="角色">
         <template #default="{ row }">
@@ -47,15 +53,18 @@
         </template>
       </el-table-column>
     </el-table>
-    <div class="pager">
-      <el-pagination
-        background
-        layout="prev, pager, next"
-        :total="total"
-        :page-size="limit"
-        @current-change="(p: number) => { page = p; load(); }"
-      />
+      </div>
+      <div class="page-list-pager">
+        <el-pagination
+          background
+          layout="prev, pager, next"
+          :total="total"
+          :page-size="limit"
+          @current-change="(p: number) => { page = p; load(); }"
+        />
+      </div>
     </div>
+    </el-card>
 
     <el-dialog v-model="dlg" :title="editId ? '编辑用户' : '新建用户'" width="520px">
       <el-form label-width="100px">
@@ -152,7 +161,7 @@
         <el-button type="primary" @click="save">保存</el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -171,6 +180,12 @@ const auth = useAuthStore();
 function roleKey(row: Record<string, unknown>): SystemEmojiKey {
   const code = (row.role as { code?: string } | undefined)?.code;
   return systemEmojiRoleKey(code);
+}
+
+/** 列表行所属企业名称（模板中不用 TS 断言，避免 vue-tsc 报错） */
+function rowEnterpriseName(row: Record<string, unknown>) {
+  const e = row.enterprise as { name?: string } | null | undefined;
+  return e?.name || "—";
 }
 
 const rows = ref<Record<string, unknown>[]>([]);

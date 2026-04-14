@@ -1,6 +1,10 @@
 <template>
-  <el-card>
-    <div class="toolbar">
+  <div class="fill-height">
+    <el-card class="page-list-card">
+      <template #header>
+        <div class="page-list-card-title"><AppEmoji name="paperLevel" size="sm" decorative />试卷等级</div>
+      </template>
+      <div class="page-list-toolbar toolbar">
       <el-input
         v-model="searchKeyword"
         clearable
@@ -13,7 +17,9 @@
         ><AppEmoji name="add" size="sm" decorative />新建等级</el-button
       >
     </div>
-    <el-table :data="rows" style="width: 100%">
+    <div class="page-list-body">
+      <div class="page-list-table">
+        <el-table :data="rows" height="100%" style="width: 100%">
       <template #empty>
         <el-empty description="暂无试卷等级" />
       </template>
@@ -41,16 +47,19 @@
         </template>
       </el-table-column>
     </el-table>
-    <div class="pager">
-      <el-pagination
-        background
-        layout="prev, pager, next"
-        :total="total"
-        :page-size="limit"
-        @current-change="(p: number) => { page = p; load(); }"
-      />
+      </div>
+      <div class="page-list-pager">
+        <el-pagination
+          background
+          layout="prev, pager, next"
+          :total="total"
+          :page-size="limit"
+          @current-change="(p: number) => { page = p; load(); }"
+        />
+      </div>
     </div>
-  </el-card>
+    </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">

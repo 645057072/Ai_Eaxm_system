@@ -1,25 +1,30 @@
 <template>
-  <el-card>
-    <template #header>
-      <div class="hdr">
-        <span class="title">功能授权 — {{ roleName }}（{{ roleCode }}）</span>
-        <div class="hdr-act">
-          <el-button link type="primary" @click="router.push('/system/roles')">
-            <AppEmoji name="back" size="sm" decorative />返回列表
-          </el-button>
-          <el-button link type="info" @click="closePage">
-            <AppEmoji name="close" size="sm" decorative />关闭
-          </el-button>
+  <div class="fill-height">
+    <el-card class="page-list-card">
+      <template #header>
+        <div class="hdr">
+          <span class="title">功能授权 — {{ roleName }}（{{ roleCode }}）</span>
+          <div class="hdr-act">
+            <el-button link type="primary" @click="router.push('/system/roles')">
+              <AppEmoji name="back" size="sm" decorative />返回列表
+            </el-button>
+            <el-button link type="info" @click="closePage">
+              <AppEmoji name="close" size="sm" decorative />关闭
+            </el-button>
+          </div>
         </div>
-      </div>
-    </template>
+      </template>
 
-    <div v-if="loading" class="loading">加载中...</div>
-    <template v-else>
-      <p class="tip">
-        树形勾选菜单、列表、表单、字段与操作；列表/表单行右侧「含下级」勾选后，勾选该行将同步勾选其下全部字段（取消同理）。
-      </p>
-      <div class="tree-panel">
+      <div v-if="loading" class="role-perm-loading">加载中...</div>
+      <template v-else>
+        <div class="page-list-body role-perm-body">
+          <div class="page-list-sticky-block">
+            <p class="tip">
+              树形勾选菜单、列表、表单、字段与操作；列表/表单行右侧「含下级」勾选后，勾选该行将同步勾选其下全部字段（取消同理）。
+            </p>
+          </div>
+          <div class="role-perm-tree-scroll">
+            <div class="tree-panel">
         <div v-for="mod in authModules" :key="mod.moduleKey" class="mod-block">
           <div class="mod-title">
             <el-checkbox
@@ -170,13 +175,16 @@
               </div>
             </template>
           </template>
+            </div>
+          </div>
+          </div>
+          <div class="footer-act">
+            <el-button type="primary" :loading="saving" @click="savePerm">保存授权</el-button>
+          </div>
         </div>
-      </div>
-      <div class="footer-act">
-        <el-button type="primary" :loading="saving" @click="savePerm">保存授权</el-button>
-      </div>
-    </template>
-  </el-card>
+      </template>
+    </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -345,10 +353,18 @@ onActivated(() => {
   font-weight: 600;
   color: #1e293b;
 }
-.loading {
-  padding: 32px;
-  text-align: center;
+.role-perm-loading {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #64748b;
+}
+.role-perm-tree-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 .tip {
   font-size: 13px;
@@ -361,8 +377,6 @@ onActivated(() => {
   border-radius: 8px;
   padding: 12px 16px;
   background: #fafbfc;
-  max-height: calc(100vh - 280px);
-  overflow-y: auto;
 }
 .mod-block {
   margin-bottom: 20px;
@@ -434,6 +448,8 @@ onActivated(() => {
   flex-shrink: 0;
 }
 .footer-act {
-  margin-top: 20px;
+  flex-shrink: 0;
+  margin-top: 12px;
+  padding-top: 4px;
 }
 </style>

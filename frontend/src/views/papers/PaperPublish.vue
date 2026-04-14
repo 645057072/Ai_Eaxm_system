@@ -1,38 +1,46 @@
 <template>
-  <el-card>
-    <div class="toolbar">
-      <span class="page-title">试卷发布：维护考试场次并发布</span>
-      <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建场次</el-button>
-    </div>
-    <el-table :data="rows">
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="title" label="标题" />
-      <el-table-column prop="paper_id" label="试卷ID" width="90" />
-      <el-table-column prop="status" label="状态" width="100" />
-      <el-table-column label="开始" width="170">
-        <template #default="{ row }">{{ fmt(row.start_at) }}</template>
-      </el-table-column>
-      <el-table-column label="结束" width="170">
-        <template #default="{ row }">{{ fmt(row.end_at) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="220">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)"><AppEmoji name="edit" size="sm" decorative />编辑</el-button>
-          <el-button v-if="row.status !== 'published'" link type="success" @click="publish(row)"
-            ><AppEmoji name="publish" size="sm" decorative />发布</el-button
-          >
-        </template>
-      </el-table-column>
-    </el-table>
-    <div class="pager">
-      <el-pagination
-        background
-        layout="prev, pager, next"
-        :total="total"
-        :page-size="limit"
-        @current-change="(p: number) => { page = p; load(); }"
-      />
-    </div>
+  <div class="fill-height">
+    <el-card class="page-list-card">
+      <template #header>
+        <div class="page-list-card-title"><AppEmoji name="publish" size="sm" decorative />试卷发布：维护考试场次并发布</div>
+      </template>
+      <div class="page-list-toolbar toolbar">
+        <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建场次</el-button>
+      </div>
+      <div class="page-list-body">
+        <div class="page-list-table">
+          <el-table :data="rows" height="100%">
+            <el-table-column prop="id" label="ID" width="70" />
+            <el-table-column prop="title" label="标题" />
+            <el-table-column prop="paper_id" label="试卷ID" width="90" />
+            <el-table-column prop="status" label="状态" width="100" />
+            <el-table-column label="开始" width="170">
+              <template #default="{ row }">{{ fmt(row.start_at) }}</template>
+            </el-table-column>
+            <el-table-column label="结束" width="170">
+              <template #default="{ row }">{{ fmt(row.end_at) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="220">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openEdit(row)"><AppEmoji name="edit" size="sm" decorative />编辑</el-button>
+                <el-button v-if="row.status !== 'published'" link type="success" @click="publish(row)"
+                  ><AppEmoji name="publish" size="sm" decorative />发布</el-button
+                >
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+        <div class="page-list-pager">
+          <el-pagination
+            background
+            layout="prev, pager, next"
+            :total="total"
+            :page-size="limit"
+            @current-change="(p: number) => { page = p; load(); }"
+          />
+        </div>
+      </div>
+    </el-card>
 
     <el-dialog v-model="dlg" :title="form.id ? '编辑场次' : '新建场次'" width="520px">
       <el-form label-width="100px">
@@ -50,7 +58,7 @@
         <el-button type="primary" @click="save">保存</el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -139,10 +147,5 @@ onMounted(load);
 .page-title {
   color: #475569;
   font-size: 14px;
-}
-.pager {
-  margin-top: 12px;
-  display: flex;
-  justify-content: flex-end;
 }
 </style>

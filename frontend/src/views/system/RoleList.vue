@@ -1,11 +1,17 @@
 <template>
-  <el-card>
-    <div class="toolbar">
+  <div class="fill-height">
+    <el-card class="page-list-card">
+      <template #header>
+        <div class="page-list-card-title"><AppEmoji name="rolePerm" size="sm" decorative />角色权限</div>
+      </template>
+      <div class="page-list-toolbar toolbar">
       <el-button v-if="auth.can('action.role.create')" type="success" @click="openCreate"
         ><AppEmoji name="add" size="sm" decorative />新建角色</el-button
       >
     </div>
-    <el-table :data="rows" style="width: 100%">
+    <div class="page-list-body">
+      <div class="page-list-table">
+        <el-table :data="rows" height="100%" style="width: 100%">
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="name" label="角色名称" min-width="120" />
       <el-table-column prop="code" label="角色编码" width="140" />
@@ -36,6 +42,9 @@
         </template>
       </el-table-column>
     </el-table>
+      </div>
+    </div>
+    </el-card>
 
     <el-dialog v-model="dlg" :title="isCreate ? '新建角色' : '编辑角色'" width="480px">
       <el-form label-width="100px">
@@ -57,7 +66,7 @@
         <el-button type="primary" @click="save">保存</el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">

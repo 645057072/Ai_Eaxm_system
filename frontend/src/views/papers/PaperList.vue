@@ -1,6 +1,10 @@
 <template>
-  <el-card>
-    <div class="toolbar">
+  <div class="fill-height">
+    <el-card class="page-list-card">
+      <template #header>
+        <div class="page-list-card-title"><AppEmoji name="paperManage" size="sm" decorative />试卷管理</div>
+      </template>
+      <div class="page-list-toolbar toolbar">
       <el-input
         v-model="filterTitle"
         clearable
@@ -30,7 +34,9 @@
       <el-button type="primary" @click="doSearch">查询</el-button>
       <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建试卷</el-button>
     </div>
-    <el-table :data="rows">
+    <div class="page-list-body">
+      <div class="page-list-table">
+        <el-table :data="rows" height="100%">
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="paper_no" label="试卷编号" width="150" show-overflow-tooltip />
       <el-table-column prop="title" label="试卷名称" min-width="140" show-overflow-tooltip />
@@ -59,15 +65,18 @@
         </template>
       </el-table-column>
     </el-table>
-    <div class="pager">
-      <el-pagination
-        background
-        layout="prev, pager, next"
-        :total="total"
-        :page-size="limit"
-        @current-change="(p: number) => { page = p; load(); }"
-      />
+      </div>
+      <div class="page-list-pager">
+        <el-pagination
+          background
+          layout="prev, pager, next"
+          :total="total"
+          :page-size="limit"
+          @current-change="(p: number) => { page = p; load(); }"
+        />
+      </div>
     </div>
+    </el-card>
 
     <el-dialog v-model="dlg" title="新建试卷" width="860px" top="5vh" @closed="onDlgClosed">
       <el-form label-width="120px">
@@ -215,7 +224,7 @@
         <el-button type="primary" @click="createMode === 'single' ? saveCreate() : saveBatch()">创建</el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">

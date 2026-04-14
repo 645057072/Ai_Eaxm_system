@@ -1,9 +1,15 @@
 <template>
-  <el-card>
-    <div class="toolbar">
+  <div class="fill-height">
+    <el-card class="page-list-card">
+      <template #header>
+        <div class="page-list-card-title"><AppEmoji name="enterprise" size="sm" decorative />企业信息</div>
+      </template>
+      <div class="page-list-toolbar toolbar">
       <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建企业</el-button>
     </div>
-    <el-table :data="rows" style="width: 100%">
+    <div class="page-list-body">
+      <div class="page-list-table">
+        <el-table :data="rows" height="100%" style="width: 100%">
       <template #empty>
         <el-empty description="暂无企业档案。本列表仅展示当前账号所属企业；新建后若仍无数据，请确认账号 enterprise_id 与库中企业记录一致。" />
       </template>
@@ -29,15 +35,18 @@
         </template>
       </el-table-column>
     </el-table>
-    <div class="pager">
-      <el-pagination
-        background
-        layout="prev, pager, next"
-        :total="total"
-        :page-size="limit"
-        @current-change="(p: number) => { page = p; load(); }"
-      />
+      </div>
+      <div class="page-list-pager">
+        <el-pagination
+          background
+          layout="prev, pager, next"
+          :total="total"
+          :page-size="limit"
+          @current-change="(p: number) => { page = p; load(); }"
+        />
+      </div>
     </div>
+    </el-card>
 
     <el-dialog v-model="dlg" :title="editId ? '编辑企业' : '新建企业'" width="560px" @close="uploadFileList = []">
       <el-form label-width="120px">
@@ -76,7 +85,7 @@
         <el-button type="primary" @click="save">保存</el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">

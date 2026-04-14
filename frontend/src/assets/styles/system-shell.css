@@ -2,6 +2,91 @@
 .layout .main {
   background: linear-gradient(180deg, #f4f6f9 0%, #eef1f6 100%);
   padding: 20px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/*
+ * 列表页：固定卡片标题与搜索工具条，仅表格区域纵向滚动（.fill-height 包裹列表根节点）
+ */
+.fill-height {
+  height: calc(100vh - 108px);
+  max-height: calc(100vh - 108px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.fill-height .page-list-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fill-height .page-list-card :deep(.el-card__body) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.fill-height .page-list-card :deep(.el-card__header) {
+  flex-shrink: 0;
+}
+
+.page-list-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 16px;
+  color: #0f172a;
+}
+
+.page-list-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.page-list-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  gap: 0;
+}
+
+.page-list-table {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.page-list-table :deep(.el-table) {
+  height: 100% !important;
+}
+
+.page-list-pager {
+  flex-shrink: 0;
+  padding-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* 组卷页：元信息 + 工具条一并固定在表格之上 */
+.page-list-sticky-block {
+  flex-shrink: 0;
+  margin-bottom: 12px;
 }
 
 .layout .main .el-card {

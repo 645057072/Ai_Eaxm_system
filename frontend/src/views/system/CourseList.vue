@@ -1,6 +1,10 @@
 <template>
-  <el-card>
-    <div class="toolbar">
+  <div class="fill-height">
+    <el-card class="page-list-card">
+      <template #header>
+        <div class="page-list-card-title"><AppEmoji name="course" size="sm" decorative />课程信息</div>
+      </template>
+      <div class="page-list-toolbar toolbar">
       <el-input
         v-model="searchKeyword"
         clearable
@@ -13,7 +17,9 @@
         ><AppEmoji name="add" size="sm" decorative />新建课程</el-button
       >
     </div>
-    <el-table :data="rows" style="width: 100%">
+    <div class="page-list-body">
+      <div class="page-list-table">
+        <el-table :data="rows" height="100%" style="width: 100%">
       <template #empty>
         <el-empty description="暂无课程数据" />
       </template>
@@ -25,7 +31,7 @@
       <el-table-column v-if="auth.can('field.course.period')" prop="period_text" label="课程期间" width="160" show-overflow-tooltip />
       <el-table-column v-if="auth.can('field.course.description')" prop="description" label="课程简介" min-width="160" show-overflow-tooltip />
       <el-table-column v-if="auth.can('field.course.enterprise')" label="所属企业" min-width="120" show-overflow-tooltip>
-        <template #default="{ row }">{{ (row.enterprise as { name?: string })?.name || "—" }}</template>
+        <template #default="{ row }">{{ rowEnterpriseName(row) }}</template>
       </el-table-column>
       <el-table-column prop="created_at" label="创建时间" width="170">
         <template #default="{ row }">{{ fmtTime(row.created_at) }}</template>
@@ -46,15 +52,18 @@
         </template>
       </el-table-column>
     </el-table>
-    <div class="pager">
-      <el-pagination
-        background
-        layout="prev, pager, next"
-        :total="total"
-        :page-size="limit"
-        @current-change="(p: number) => { page = p; load(); }"
-      />
+      </div>
+      <div class="page-list-pager">
+        <el-pagination
+          background
+          layout="prev, pager, next"
+          :total="total"
+          :page-size="limit"
+          @current-change="(p: number) => { page = p; load(); }"
+        />
+      </div>
     </div>
+    </el-card>
 
     <el-dialog v-model="dlg" :title="editId ? '编辑课程' : '新建课程'" width="560px">
       <el-form label-width="100px">
@@ -92,7 +101,7 @@
         <el-button type="primary" @click="save">保存</el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -143,6 +152,12 @@ function parsePeriodToRange(text: string): [string, string] | null {
 function fmtTime(v: unknown) {
   if (!v) return "";
   return String(v).replace("T", " ").slice(0, 19);
+}
+
+/** 列表行所属企业名称（模板中不用 TS 断言，避免 vue-tsc 报错） */
+function rowEnterpriseName(row: Record<string, unknown>) {
+  const e = row.enterprise as { name?: string } | null | undefined;
+  return e?.name || "—";
 }
 
 async function load() {

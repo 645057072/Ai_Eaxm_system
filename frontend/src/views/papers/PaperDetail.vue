@@ -1,64 +1,66 @@
 <template>
-  <el-card v-loading="loading">
-    <template #header>
-      <div class="hdr">
-        <span><AppEmoji name="papers" size="sm" decorative />试卷 #{{ id }} {{ paper?.title }}</span>
-        <el-button @click="$router.back()"><AppEmoji name="back" size="sm" decorative />返回</el-button>
+  <div class="fill-height">
+    <el-card v-loading="loading" class="page-list-card paper-detail-page">
+      <template #header>
+        <div class="hdr page-list-card-title">
+          <span><AppEmoji name="papers" size="sm" decorative />试卷组卷 #{{ id }} {{ paper?.title }}</span>
+          <el-button @click="$router.back()"><AppEmoji name="back" size="sm" decorative />返回</el-button>
+        </div>
+      </template>
+      <div class="page-list-sticky-block">
+        <p class="meta">
+          试卷编号：{{ paper?.paper_no || "—" }}；课程：{{ paper?.course_name || "—" }}；类型：{{
+            paperTypeLabel(paper?.paper_type as string | undefined)
+          }}；等级：{{ paper?.level_name || "—" }}
+        </p>
+        <p class="meta meta-second">时长：{{ paper?.duration_minutes }} 分钟，总分：{{ formatScore(paper?.total_score) }}（小题分值合计）</p>
+        <div class="page-list-toolbar toolbar">
+          <el-input-number v-model="addQid" :min="1" placeholder="题目ID" />
+          <el-input-number v-model="addScore" :min="0" :step="0.5" />
+          <el-input-number v-model="addOrder" :min="0" placeholder="排序号" />
+          <el-button type="primary" @click="addItem"><AppEmoji name="addToPaper" size="sm" decorative />加入试卷</el-button>
+        </div>
       </div>
-    </template>
-    <p class="meta">
-      试卷编号：{{ paper?.paper_no || "—" }}；课程：{{ paper?.course_name || "—" }}；类型：{{
-        paperTypeLabel(paper?.paper_type as string | undefined)
-      }}；等级：{{ paper?.level_name || "—" }}
-    </p>
-    <p>时长：{{ paper?.duration_minutes }} 分钟，总分：{{ formatScore(paper?.total_score) }}（小题分值合计）</p>
-    <div class="toolbar">
-      <el-input-number v-model="addQid" :min="1" placeholder="题目ID" />
-      <el-input-number v-model="addScore" :min="0" :step="0.5" />
-      <el-input-number v-model="addOrder" :min="0" placeholder="排序号" />
-      <el-button type="primary" @click="addItem"><AppEmoji name="addToPaper" size="sm" decorative />加入试卷</el-button>
-    </div>
-    <el-table :data="paper?.items || []" border class="items-table">
-      <el-table-column label="序号" width="72" align="center">
-        <template #default="{ $index }">{{ $index + 1 }}</template>
-      </el-table-column>
-      <el-table-column label="题号" width="120" show-overflow-tooltip>
-        <template #default="{ row }">{{ (row as PaperRow).question?.question_no || "—" }}</template>
-      </el-table-column>
-      <el-table-column label="题型" width="88">
-        <template #default="{ row }">{{ qTypeLabel((row as PaperRow).question?.q_type) }}</template>
-      </el-table-column>
-      <el-table-column prop="score" label="分值" width="80" align="center" />
-      <el-table-column prop="auto_split_count" label="拆分" width="72" align="center" />
-      <el-table-column prop="question_id" label="题目ID" width="88" align="center" />
-      <el-table-column label="题干" min-width="160" show-overflow-tooltip>
-        <template #default="{ row }">{{ (row as PaperRow).question?.stem }}</template>
-      </el-table-column>
-      <el-table-column label="选项" min-width="180" show-overflow-tooltip>
-        <template #default="{ row }">{{ formatOptions((row as PaperRow).question?.options_json) }}</template>
-      </el-table-column>
-      <el-table-column label="标准答案" min-width="140" show-overflow-tooltip>
-        <template #default="{ row }">
-          {{
-            formatAnswer(
-              (row as PaperRow).question?.answer_json,
-              (row as PaperRow).question?.q_type ?? "",
-              (row as PaperRow).question?.options_json,
-            )
-          }}
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="100" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="danger" @click="remove(row)"><AppEmoji name="remove" size="sm" decorative />移除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-  </el-card>
+      <div class="page-list-body">
+        <div class="page-list-table">
+          <el-table :data="sortedPaperItems" border class="items-table" height="100%">
+            <el-table-column label="编号" width="72" align="center">
+              <template #default="{ row }">{{ typeSerialByItemId.get((row as PaperRow).id) ?? "—" }}</template>
+            </el-table-column>
+            <el-table-column label="题库题号" width="120" show-overflow-tooltip>
+              <template #default="{ row }">{{ (row as PaperRow).question?.question_no || "—" }}</template>
+            </el-table-column>
+            <el-table-column label="题型" width="88">
+              <template #default="{ row }">{{ qTypeLabel((row as PaperRow).question?.q_type) }}</template>
+            </el-table-column>
+            <el-table-column prop="score" label="分值" width="80" align="center" />
+            <el-table-column prop="auto_split_count" label="拆分" width="72" align="center" />
+            <el-table-column prop="question_id" label="题目ID" width="88" align="center" />
+            <el-table-column label="题干" min-width="160" show-overflow-tooltip>
+              <template #default="{ row }">{{ (row as PaperRow).question?.stem }}</template>
+            </el-table-column>
+            <el-table-column label="选项" min-width="180" show-overflow-tooltip>
+              <template #default="{ row }">{{ formatOptions((row as PaperRow).question?.options_json) }}</template>
+            </el-table-column>
+            <el-table-column label="标准答案" min-width="100" show-overflow-tooltip>
+              <template #default="{ row }">
+                {{ formatAnswerShort((row as PaperRow).question?.answer_json, (row as PaperRow).question?.q_type ?? "") }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="100" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="danger" @click="remove(row)"><AppEmoji name="remove" size="sm" decorative />移除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+    </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
 import { getPaper, addPaperItem, removePaperItem } from "@/api/papers";
@@ -86,6 +88,38 @@ type PaperRow = {
   score: number;
   question?: QuestionBrief | null;
 };
+
+const qtypeRank: Record<string, number> = { judge: 0, single: 1, multiple: 2, fill: 3 };
+
+/** 按题型升序、同题型题库题号升序，与业务展示一致 */
+const sortedPaperItems = computed(() => {
+  const items = (paper.value?.items as PaperRow[]) ?? [];
+  return [...items].sort((a, b) => {
+    const qa = a.question?.q_type ?? "";
+    const qb = b.question?.q_type ?? "";
+    const ra = qtypeRank[qa] ?? 99;
+    const rb = qtypeRank[qb] ?? 99;
+    if (ra !== rb) return ra - rb;
+    const na = (a.question?.question_no ?? "").trim();
+    const nb = (b.question?.question_no ?? "").trim();
+    const cmp = na.localeCompare(nb, undefined, { numeric: true, sensitivity: "base" });
+    if (cmp !== 0) return cmp;
+    return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  });
+});
+
+/** 各题型内从 1 递增的展示编号 */
+const typeSerialByItemId = computed(() => {
+  const m = new Map<number, number>();
+  const counts = new Map<string, number>();
+  for (const it of sortedPaperItems.value) {
+    const qt = it.question?.q_type ?? "_";
+    const next = (counts.get(qt) ?? 0) + 1;
+    counts.set(qt, next);
+    m.set(it.id, next);
+  }
+  return m;
+});
 
 const paperTypeLabelMap: Record<string, string> = {
   formal: "正式",
@@ -134,44 +168,63 @@ function formatOptions(opts: unknown): string {
   return lines.length ? lines.join("；") : "—";
 }
 
-function optionTextByKey(opts: unknown, key: string): string | null {
-  if (!key || !Array.isArray(opts)) return null;
-  const row = (opts as OptItem[]).find((o) => String(o.key ?? "").toUpperCase() === key.toUpperCase());
-  const t = row?.text;
-  return t != null && String(t).trim() !== "" ? String(t).trim() : null;
-}
-
-/** 标准答案展示：不含解析等非关键字段 */
-function formatAnswer(ans: unknown, qType: string, options: unknown): string {
+/** 标准答案仅显示选项键：判断 T/F，单选 A，多选 ABC（无说明文字） */
+function formatAnswerShort(ans: unknown, qType: string): string {
   if (ans == null) return "—";
-  if (typeof ans === "string") return ans;
+  if (typeof ans === "string") {
+    const s = ans.trim();
+    if (qType === "judge") {
+      if (s === "正确" || s.toUpperCase() === "T") return "T";
+      if (s === "错误" || s.toUpperCase() === "F") return "F";
+      return s;
+    }
+    if (qType === "single") {
+      const m = s.match(/^([A-Za-z])\s*[（(]?/);
+      if (m) return m[1].toUpperCase();
+      return s;
+    }
+    if (qType === "multiple") {
+      const compact = s.replace(/\s/g, "");
+      if (/^[A-Za-z]{2,}$/.test(compact)) {
+        return [...compact.toUpperCase()]
+          .filter((ch, i, arr) => arr.indexOf(ch) === i)
+          .sort()
+          .join("");
+      }
+      const parts = s.split(/[;；,，]+/).map((p) => p.trim()).filter(Boolean);
+      const keys: string[] = [];
+      for (const p of parts) {
+        const m = p.match(/^([A-Za-z])/);
+        if (m) keys.push(m[1].toUpperCase());
+      }
+      if (keys.length) return [...new Set(keys)].sort().join("");
+      return s;
+    }
+    return s;
+  }
   if (typeof ans !== "object") return String(ans);
   const o = ans as Record<string, unknown>;
   if (qType === "judge") {
     const c = o.choice;
-    if (c === "T" || c === true) return "正确";
-    if (c === "F" || c === false) return "错误";
-    return c != null ? String(c) : "—";
+    if (c === "T" || c === true || c === "正确") return "T";
+    if (c === "F" || c === false || c === "错误") return "F";
+    if (typeof c === "string") {
+      const u = c.trim().toUpperCase();
+      if (u === "T" || u === "F") return u;
+    }
+    return "—";
   }
   if (qType === "multiple") {
     const raw = o.choices;
-    if (!Array.isArray(raw) || raw.length === 0) return JSON.stringify(ans);
-    return raw
-      .map((x) => String(x).toUpperCase())
-      .map((k) => {
-        const label = optionTextByKey(options, k);
-        return label ? `${k}（${label}）` : k;
-      })
-      .join("、");
+    if (!Array.isArray(raw) || raw.length === 0) return "—";
+    return [...raw].map((x) => String(x).toUpperCase()).sort().join("");
   }
   if (qType === "fill") {
     const t = o.text;
     return t != null && String(t) !== "" ? String(t) : "—";
   }
   const k = o.choice != null ? String(o.choice).toUpperCase() : "";
-  if (!k) return "—";
-  const label = optionTextByKey(options, k);
-  return label ? `${k}（${label}）` : k;
+  return k || "—";
 }
 
 function syncNextSortOrder() {
@@ -225,19 +278,23 @@ onMounted(refresh);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  width: 100%;
 }
 .toolbar {
-  display: flex;
-  gap: 8px;
-  margin: 12px 0;
-  flex-wrap: wrap;
+  margin-bottom: 0;
 }
 .meta {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   font-size: 14px;
   color: #334155;
 }
+.meta-second {
+  margin-bottom: 10px;
+}
 .items-table {
   width: 100%;
+}
+.paper-detail-page :deep(.el-card__header) {
+  padding: 12px 16px;
 }
 </style>
