@@ -33,10 +33,19 @@
       </el-select>
       <el-button type="primary" @click="doSearch">查询</el-button>
       <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建试卷</el-button>
-      <span class="batch-mgmt-label">批量管理：</span>
-      <el-button :disabled="!selectedRows.length" @click="batchAudit">审核</el-button>
-      <el-button type="warning" plain :disabled="!selectedRows.length" @click="batchUnaudit">反审核</el-button>
-      <el-button type="danger" plain :disabled="!selectedRows.length" @click="batchDelete">删除</el-button>
+      <el-dropdown trigger="click" @command="onBatchCommand">
+        <el-button type="primary" :disabled="!selectedRows.length">
+          批量操作
+          <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="audit">审核</el-dropdown-item>
+            <el-dropdown-item command="unaudit">反审核</el-dropdown-item>
+            <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </div>
     <div class="page-list-body">
       <div class="page-list-table">
@@ -57,8 +66,14 @@
       <el-table-column label="状态" width="88" align="center">
         <template #default="{ row }">{{ auditStatusLabel(row) }}</template>
       </el-table-column>
-      <el-table-column label="等级" width="120" show-overflow-tooltip>
-        <template #default="{ row }">{{ (row.level_name as string) || "—" }}</template>
+      <el-table-column label="等级" width="140" show-overflow-tooltip>
+        <template #default="{ row }">{{ rowLevelDisplay(row) }}</template>
+      </el-table-column>
+      <el-table-column label="创建日期" width="110" align="center">
+        <template #default="{ row }">{{ fmtPaperDate(row.issue_date) }}</template>
+      </el-table-column>
+      <el-table-column label="有效期至" width="110" align="center">
+        <template #default="{ row }">{{ fmtPaperDate(row.valid_until) }}</template>
       </el-table-column>
       <el-table-column prop="duration_minutes" label="时长(分)" width="100" />
       <el-table-column label="总分" width="90">
@@ -70,13 +85,10 @@
       <el-table-column label="场次引用" width="88" align="center">
         <template #default="{ row }">{{ paperSessionRefs(row) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="280">
+      <el-table-column label="操作" width="200">
         <template #default="{ row }">
           <el-button link type="primary" @click="$router.push('/papers/' + row.id)"
             ><AppEmoji name="compose" size="sm" decorative />组卷</el-button
-          >
-          <el-button link type="warning" :disabled="paperItemCount(row) < 1" @click="onUncompose(row)"
-            >反组卷</el-button
           >
           <el-button link type="danger" :disabled="!canDeleteRow(row)" @click="onDel(row)"
             ><AppEmoji name="delete" size="sm" decorative />删除</el-button
@@ -177,6 +189,26 @@
         <el-form-item label="时长(分)">
           <el-input-number v-model="form.duration_minutes" :min="1" :max="600" />
         </el-form-item>
+        <el-form-item label="创建日期">
+          <el-date-picker
+            v-model="form.issue_date"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="选填"
+            clearable
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="有效期至">
+          <el-date-picker
+            v-model="form.valid_until"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="选填；到期后不可发布考试场次"
+            clearable
+            style="width: 100%"
+          />
+        </el-form-item>
 
         <template v-if="createMode === 'single'">
           <el-divider content-position="left">按题型抽题（题库区间为所选课程下已发布题目）</el-divider>
@@ -252,6 +284,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
+import { ArrowDown } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiErrorMessage } from "@/api/http";
 import {
@@ -259,7 +292,6 @@ import {
   createPaper,
   createPapersBatch,
   deletePaper,
-  clearPaperItems,
   batchAuditPapers,
   batchUnauditPapers,
 } from "@/api/papers";
@@ -304,7 +336,32 @@ function paperAuditStatus(row: Record<string, unknown>) {
 }
 
 function auditStatusLabel(row: Record<string, unknown>) {
-  return paperAuditStatus(row) === "reviewed" ? "审核" : "草稿";
+  return paperAuditStatus(row) === "reviewed" ? "已审核" : "草稿";
+}
+
+function fmtPaperDate(v: unknown) {
+  if (v == null || v === "") return "—";
+  const s = String(v);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function rowLevelDisplay(row: Record<string, unknown>) {
+  const n = row.level_name;
+  if (typeof n === "string" && n.trim()) return n;
+  return "—";
+}
+
+function todayISO() {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function onBatchCommand(cmd: string) {
+  if (cmd === "audit") void batchAudit();
+  else if (cmd === "unaudit") void batchUnaudit();
+  else if (cmd === "delete") void batchDelete();
 }
 
 function canDeleteRow(row: Record<string, unknown>) {
@@ -336,6 +393,8 @@ const form = reactive({
   level_id: undefined as number | undefined,
   description: "",
   duration_minutes: 60,
+  issue_date: null as string | null,
+  valid_until: null as string | null,
 });
 
 const batchForm = reactive({
@@ -505,6 +564,8 @@ function openCreate() {
   form.level_id = undefined;
   form.description = "";
   form.duration_minutes = 60;
+  form.issue_date = todayISO();
+  form.valid_until = null;
   batchForm.base_title = "";
   batchForm.paper_count = 3;
   batchForm.auto_split = 1;
@@ -571,6 +632,8 @@ async function saveCreate() {
   const pn = form.paper_no.trim();
   if (pn) body.paper_no = pn;
   if (form.level_id) body.level_id = form.level_id;
+  if (form.issue_date) body.issue_date = form.issue_date;
+  if (form.valid_until) body.valid_until = form.valid_until;
   try {
     const { data } = await createPaper(body);
     ElMessage.success("已创建");
@@ -602,7 +665,7 @@ async function saveBatch() {
     return;
   }
   try {
-    const { data } = await createPapersBatch({
+    const batchBody: Record<string, unknown> = {
       base_title: batchForm.base_title.trim(),
       paper_count: batchForm.paper_count,
       course_id: form.course_id,
@@ -613,7 +676,10 @@ async function saveBatch() {
       rules,
       auto_split: batchForm.auto_split,
       score_per: batchForm.score_per,
-    });
+    };
+    if (form.issue_date) batchBody.issue_date = form.issue_date;
+    if (form.valid_until) batchBody.valid_until = form.valid_until;
+    const { data } = await createPapersBatch(batchBody);
     const n = (data.items as unknown[])?.length ?? 0;
     ElMessage.success(`已生成 ${n} 套试卷`);
     dlg.value = false;
@@ -689,18 +755,6 @@ async function batchDelete() {
   await load();
 }
 
-async function onUncompose(row: Record<string, unknown>) {
-  if (!canUncomposeRow(row)) return;
-  await ElMessageBox.confirm(`确定清空「${row.title}」的全部题目？`, "反组卷", { type: "warning" });
-  try {
-    await clearPaperItems(row.id as number);
-    ElMessage.success("已反组卷");
-    await load();
-  } catch (e) {
-    ElMessage.error(apiErrorMessage(e, "反组卷失败"));
-  }
-}
-
 async function onDel(row: Record<string, unknown>) {
   if (!canDeleteRow(row)) {
     ElMessage.warning("已审核的试卷不可删除");
@@ -748,11 +802,6 @@ onMounted(async () => {
 }
 .rules-table {
   margin-bottom: 8px;
-}
-.batch-mgmt-label {
-  margin-right: 4px;
-  font-size: 13px;
-  color: #64748b;
 }
 .hint {
   margin-left: 12px;

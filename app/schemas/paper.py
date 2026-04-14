@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, List, Optional
 
@@ -44,6 +44,8 @@ class PaperSummary(BaseModel):
     item_count: int = Field(0, description="已组卷题目数量，大于0表示已组卷")
     session_ref_count: int = Field(0, description="引用该试卷的考试场次数量")
     audit_status: str = Field("draft", description="draft 草稿，reviewed 已审核")
+    issue_date: Optional[date] = None
+    valid_until: Optional[date] = None
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: datetime
@@ -59,7 +61,15 @@ class PaperCreate(BaseModel):
     level_id: Optional[int] = None
     description: Optional[str] = None
     duration_minutes: int = Field(60, ge=1, le=600)
+    issue_date: Optional[date] = Field(None, description="创建/签发日期")
+    valid_until: Optional[date] = Field(None, description="有效期至（含当日仍有效；次日不可发布引用）")
     rules: List[PaperCompositionRule] = Field(default_factory=list, description="按题型抽题；空则仅创建空卷")
+
+    @model_validator(mode="after")
+    def _issue_valid_range(self) -> "PaperCreate":
+        if self.issue_date and self.valid_until and self.valid_until < self.issue_date:
+            raise ValueError("有效期不得早于创建日期")
+        return self
 
 
 class PaperUpdate(BaseModel):
@@ -70,6 +80,14 @@ class PaperUpdate(BaseModel):
     level_id: Optional[int] = None
     description: Optional[str] = None
     duration_minutes: Optional[int] = Field(None, ge=1, le=600)
+    issue_date: Optional[date] = None
+    valid_until: Optional[date] = None
+
+    @model_validator(mode="after")
+    def _issue_valid_range(self) -> "PaperUpdate":
+        if self.issue_date and self.valid_until and self.valid_until < self.issue_date:
+            raise ValueError("有效期不得早于创建日期")
+        return self
 
 
 class PaperItemOut(BaseModel):
@@ -97,6 +115,8 @@ class PaperOut(BaseModel):
     duration_minutes: int
     total_score: Decimal
     audit_status: str = "draft"
+    issue_date: Optional[date] = None
+    valid_until: Optional[date] = None
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: datetime
@@ -136,6 +156,8 @@ class PaperBatchCreate(BaseModel):
     rules: List[PaperBatchRule] = Field(..., min_length=1)
     auto_split: int = Field(1, ge=1)
     score_per: Decimal = Field(Decimal("1"), ge=0)
+    issue_date: Optional[date] = Field(None, description="各套试卷统一的创建/签发日期")
+    valid_until: Optional[date] = Field(None, description="各套试卷统一的有效期至")
 
     @model_validator(mode="after")
     def _nonzero_totals(self) -> "PaperBatchCreate":
@@ -144,6 +166,8 @@ class PaperBatchCreate(BaseModel):
         qs = [r.q_type for r in self.rules if r.total_count > 0]
         if len(qs) != len(set(qs)):
             raise ValueError("同一题型只能配置一行（请合并题型总量）")
+        if self.issue_date and self.valid_until and self.valid_until < self.issue_date:
+            raise ValueError("有效期不得早于创建日期")
         return self
 
 

@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """试卷、场次、作答。"""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, List, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, JSON, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, JSON, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -35,6 +35,8 @@ class ExamPaper(Base):
     audit_status: Mapped[str] = mapped_column(
         String(16), default="draft", index=True, comment="审核状态：draft 草稿，reviewed 已审核"
     )
+    issue_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, comment="创建/签发日期")
+    valid_until: Mapped[Optional[date]] = mapped_column(Date, nullable=True, comment="有效期至")
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("sys_user.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

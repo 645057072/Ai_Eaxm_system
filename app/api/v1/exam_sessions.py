@@ -26,6 +26,23 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _assert_paper_valid_for_session(db: Session, paper_id: int) -> None:
+    """试卷未设置有效期或当前日期未超过有效期截止日，才允许创建/发布场次。"""
+    paper = db.get(ExamPaper, paper_id)
+    if paper is None:
+        raise HTTPException(status_code=404, detail="试卷不存在")
+    vu = getattr(paper, "valid_until", None)
+    if vu is None:
+        return
+    today = _now().date()
+    if hasattr(vu, "date"):
+        vu_d = vu.date()
+    else:
+        vu_d = vu
+    if today > vu_d:
+        raise HTTPException(status_code=400, detail="试卷已超过有效期，无法创建或发布考试场次")
+
+
 @router.get("/available/list", response_model=PageResult[ExamSessionOut])
 def list_available_for_student(
     db: Annotated[Session, Depends(get_db)],
@@ -129,6 +146,7 @@ def create_session(
 ) -> ExamSessionOut:
     """创建场次。"""
     assert_paper_in_enterprise(db, current, body.paper_id)
+    _assert_paper_valid_for_session(db, body.paper_id)
     s = ExamSession(
         paper_id=body.paper_id,
         title=body.title,
@@ -191,6 +209,7 @@ def publish_session(
 ) -> ExamSessionOut:
     """发布场次。"""
     s = assert_session_in_enterprise(db, current, session_id)
+    _assert_paper_valid_for_session(db, s.paper_id)
     s.status = "published"
     db.commit()
     db.refresh(s)

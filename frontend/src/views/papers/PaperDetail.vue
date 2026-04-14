@@ -16,7 +16,7 @@
         <p class="meta meta-second">
           时长：{{ paper?.duration_minutes }} 分钟，总分：{{ formatScore(paper?.total_score) }}（小题分值合计）；状态：{{
             auditStatusLabel(paper?.audit_status as string | undefined)
-          }}
+          }}；创建日期：{{ fmtPaperDate(paper?.issue_date) }}；有效期至：{{ fmtPaperDate(paper?.valid_until) }}
         </p>
       </div>
       <div class="bank-panel">
@@ -143,7 +143,13 @@ const poolQTypeOpts = [
 ];
 
 function auditStatusLabel(s: string | undefined) {
-  return s === "reviewed" ? "审核" : "草稿";
+  return s === "reviewed" ? "已审核" : "草稿";
+}
+
+function fmtPaperDate(v: unknown) {
+  if (v == null || v === "") return "—";
+  const s = String(v);
+  return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
 type QuestionBrief = {

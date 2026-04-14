@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """试卷：组卷与题目项维护。"""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Annotated
 
@@ -196,8 +196,19 @@ def _apply_paper_list_keyword_filters(
     return stmt
 
 
+def _resolve_level_name(p: ExamPaper, db: Session) -> str | None:
+    """列表展示用等级名称：优先已加载关联，否则按 level_id 补查。"""
+    if p.paper_level is not None:
+        return p.paper_level.level_name
+    if p.level_id is not None:
+        pl = db.get(PaperLevel, p.level_id)
+        return pl.level_name if pl else None
+    return None
+
+
 def _paper_summary(
     p: ExamPaper,
+    db: Session,
     *,
     item_score_total: Decimal | None = None,
     item_count: int = 0,
@@ -205,6 +216,8 @@ def _paper_summary(
 ) -> PaperSummary:
     eid, ename = _enterprise_for_paper(p)
     ts = item_score_total if item_score_total is not None else p.total_score
+    idate = getattr(p, "issue_date", None)
+    vuntil = getattr(p, "valid_until", None)
     return PaperSummary(
         id=p.id,
         title=p.title,
@@ -213,7 +226,7 @@ def _paper_summary(
         course_name=p.course.name if p.course else None,
         paper_type=p.paper_type or "formal",
         level_id=p.level_id,
-        level_name=p.paper_level.level_name if p.paper_level else None,
+        level_name=_resolve_level_name(p, db),
         enterprise_id=eid,
         enterprise_name=ename,
         description=p.description,
@@ -222,6 +235,8 @@ def _paper_summary(
         item_count=item_count,
         session_ref_count=session_ref_count,
         audit_status=getattr(p, "audit_status", None) or "draft",
+        issue_date=idate if isinstance(idate, date) else None,
+        valid_until=vuntil if isinstance(vuntil, date) else None,
         created_by=p.created_by,
         created_at=p.created_at,
         updated_at=p.updated_at,
@@ -278,6 +293,7 @@ def list_papers(
         items=[
             _paper_summary(
                 r,
+                db,
                 item_score_total=sums.get(r.id, Decimal("0")),
                 item_count=ic.get(r.id, 0),
                 session_ref_count=sc.get(r.id, 0),
@@ -371,6 +387,8 @@ def create_papers_batch(
             description=body.description,
             duration_minutes=body.duration_minutes,
             total_score=Decimal("0"),
+            issue_date=body.issue_date,
+            valid_until=body.valid_until,
             created_by=current.id,
         )
         db.add(p)
@@ -404,7 +422,7 @@ def create_papers_batch(
                 )
                 or 0
             )
-            summaries.append(_paper_summary(pr, item_count=int(icn)))
+            summaries.append(_paper_summary(pr, db, item_count=int(icn)))
     return PaperBatchOut(items=summaries)
 
 
@@ -470,6 +488,8 @@ def create_paper(
         description=body.description,
         duration_minutes=body.duration_minutes,
         total_score=Decimal("0"),
+        issue_date=body.issue_date,
+        valid_until=body.valid_until,
         created_by=current.id,
     )
     db.add(p)
@@ -521,6 +541,8 @@ def _build_paper_out(p: ExamPaper) -> PaperOut:
         duration_minutes=p.duration_minutes,
         total_score=agg,
         audit_status=getattr(p, "audit_status", None) or "draft",
+        issue_date=getattr(p, "issue_date", None),
+        valid_until=getattr(p, "valid_until", None),
         created_by=p.created_by,
         created_at=p.created_at,
         updated_at=p.updated_at,
