@@ -19,6 +19,7 @@ from app.models.user import User
 from app.schemas.common import PageParams, PageResult
 from app.schemas.paper import (
     PaperBatchCreate,
+    PaperBatchIdsIn,
     PaperBatchOut,
     PaperCreate,
     PaperItemAdd,
@@ -220,6 +221,7 @@ def _paper_summary(
         total_score=ts,
         item_count=item_count,
         session_ref_count=session_ref_count,
+        audit_status=getattr(p, "audit_status", None) or "draft",
         created_by=p.created_by,
         created_at=p.created_at,
         updated_at=p.updated_at,
@@ -518,6 +520,7 @@ def _build_paper_out(p: ExamPaper) -> PaperOut:
         description=p.description,
         duration_minutes=p.duration_minutes,
         total_score=agg,
+        audit_status=getattr(p, "audit_status", None) or "draft",
         created_by=p.created_by,
         created_at=p.created_at,
         updated_at=p.updated_at,
@@ -598,6 +601,59 @@ def update_paper(
     return get_paper(paper_id, db, current)
 
 
+@router.post("/batch-audit", response_model=dict)
+def batch_audit_papers(
+    body: PaperBatchIdsIn,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[User, Depends(require_permission("action.paper.manage"))],
+) -> dict:
+    """批量审核：草稿改为已审核。"""
+    n_ok = 0
+    for pid in body.ids:
+        p = db.get(ExamPaper, pid)
+        if p is None:
+            continue
+        try:
+            assert_paper_in_enterprise(db, current, pid)
+        except HTTPException:
+            continue
+        if (getattr(p, "audit_status", None) or "draft") != "draft":
+            continue
+        p.audit_status = "reviewed"
+        n_ok += 1
+    db.commit()
+    return {"updated": n_ok}
+
+
+@router.post("/batch-unaudit", response_model=dict)
+def batch_unaudit_papers(
+    body: PaperBatchIdsIn,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[User, Depends(require_permission("action.paper.manage"))],
+) -> dict:
+    """批量反审核：已审核改为草稿；已被考试场次引用的试卷跳过。"""
+    n_ok = 0
+    for pid in body.ids:
+        p = db.get(ExamPaper, pid)
+        if p is None:
+            continue
+        try:
+            assert_paper_in_enterprise(db, current, pid)
+        except HTTPException:
+            continue
+        if (getattr(p, "audit_status", None) or "draft") != "reviewed":
+            continue
+        n_sess = (
+            db.scalar(select(func.count()).select_from(ExamSession).where(ExamSession.paper_id == pid)) or 0
+        )
+        if int(n_sess) > 0:
+            continue
+        p.audit_status = "draft"
+        n_ok += 1
+    db.commit()
+    return {"updated": n_ok}
+
+
 @router.delete("/{paper_id}", status_code=204)
 def delete_paper(
     paper_id: int,
@@ -605,19 +661,8 @@ def delete_paper(
     current: Annotated[User, Depends(require_permission("action.paper.manage"))],
 ) -> None:
     p = assert_paper_in_enterprise(db, current, paper_id)
-    n_items = (
-        db.scalar(
-            select(func.count()).select_from(ExamPaperItem).where(ExamPaperItem.paper_id == paper_id)
-        )
-        or 0
-    )
-    if int(n_items) > 0:
-        raise HTTPException(status_code=409, detail="已组卷的试卷不可删除，请先反组卷")
-    n_sess = (
-        db.scalar(select(func.count()).select_from(ExamSession).where(ExamSession.paper_id == paper_id)) or 0
-    )
-    if int(n_sess) > 0:
-        raise HTTPException(status_code=409, detail="试卷已被考试场次引用，不可删除")
+    if (getattr(p, "audit_status", None) or "draft") == "reviewed":
+        raise HTTPException(status_code=409, detail="已审核的试卷不可删除")
     db.delete(p)
     db.commit()
 
@@ -628,13 +673,8 @@ def clear_paper_items(
     db: Annotated[Session, Depends(get_db)],
     current: Annotated[User, Depends(require_permission("action.paper.manage"))],
 ) -> None:
-    """反组卷：清空试卷内全部题目；已被考试场次引用的试卷不允许清空。"""
+    """反组卷：清空试卷内全部题目。"""
     assert_paper_in_enterprise(db, current, paper_id)
-    n_sess = (
-        db.scalar(select(func.count()).select_from(ExamSession).where(ExamSession.paper_id == paper_id)) or 0
-    )
-    if int(n_sess) > 0:
-        raise HTTPException(status_code=409, detail="试卷已被考试场次引用，无法反组卷")
     db.execute(delete(ExamPaperItem).where(ExamPaperItem.paper_id == paper_id))
     _recalc_total_score(db, paper_id)
     db.commit()

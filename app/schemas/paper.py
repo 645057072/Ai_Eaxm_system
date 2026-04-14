@@ -43,6 +43,7 @@ class PaperSummary(BaseModel):
     total_score: Decimal
     item_count: int = Field(0, description="已组卷题目数量，大于0表示已组卷")
     session_ref_count: int = Field(0, description="引用该试卷的考试场次数量")
+    audit_status: str = Field("draft", description="draft 草稿，reviewed 已审核")
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: datetime
@@ -95,12 +96,19 @@ class PaperOut(BaseModel):
     description: Optional[str] = None
     duration_minutes: int
     total_score: Decimal
+    audit_status: str = "draft"
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     items: List[PaperItemOut] = []
 
     model_config = {"from_attributes": True}
+
+
+class PaperBatchIdsIn(BaseModel):
+    """批量审核/反审核请求。"""
+
+    ids: List[int] = Field(..., min_length=1)
 
 
 class PaperItemAdd(BaseModel):

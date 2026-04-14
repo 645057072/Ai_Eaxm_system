@@ -16,6 +16,14 @@ export function createPapersBatch(body: Record<string, unknown>) {
   return http.post("/v1/papers/batch", body);
 }
 
+export function batchAuditPapers(ids: number[]) {
+  return http.post("/v1/papers/batch-audit", { ids });
+}
+
+export function batchUnauditPapers(ids: number[]) {
+  return http.post("/v1/papers/batch-unaudit", { ids });
+}
+
 export function updatePaper(id: number, body: Record<string, unknown>) {
   return http.patch(`/v1/papers/${id}`, body);
 }

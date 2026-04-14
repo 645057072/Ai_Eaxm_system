@@ -33,9 +33,10 @@
       </el-select>
       <el-button type="primary" @click="doSearch">查询</el-button>
       <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建试卷</el-button>
-      <el-button :disabled="!selectedRows.length" @click="batchCompose">批量组卷</el-button>
-      <el-button type="warning" plain :disabled="!selectedRows.length" @click="batchUncompose">批量反组卷</el-button>
-      <el-button type="danger" plain :disabled="!selectedRows.length" @click="batchDelete">批量删除</el-button>
+      <span class="batch-mgmt-label">批量管理：</span>
+      <el-button :disabled="!selectedRows.length" @click="batchAudit">审核</el-button>
+      <el-button type="warning" plain :disabled="!selectedRows.length" @click="batchUnaudit">反审核</el-button>
+      <el-button type="danger" plain :disabled="!selectedRows.length" @click="batchDelete">删除</el-button>
     </div>
     <div class="page-list-body">
       <div class="page-list-table">
@@ -52,6 +53,9 @@
       </el-table-column>
       <el-table-column label="试卷类型" width="100">
         <template #default="{ row }">{{ paperTypeLabel(row.paper_type as string) }}</template>
+      </el-table-column>
+      <el-table-column label="状态" width="88" align="center">
+        <template #default="{ row }">{{ auditStatusLabel(row) }}</template>
       </el-table-column>
       <el-table-column label="等级" width="120" show-overflow-tooltip>
         <template #default="{ row }">{{ (row.level_name as string) || "—" }}</template>
@@ -71,11 +75,7 @@
           <el-button link type="primary" @click="$router.push('/papers/' + row.id)"
             ><AppEmoji name="compose" size="sm" decorative />组卷</el-button
           >
-          <el-button
-            link
-            type="warning"
-            :disabled="!canUncomposeRow(row)"
-            @click="onUncompose(row)"
+          <el-button link type="warning" :disabled="paperItemCount(row) < 1" @click="onUncompose(row)"
             >反组卷</el-button
           >
           <el-button link type="danger" :disabled="!canDeleteRow(row)" @click="onDel(row)"
@@ -88,10 +88,13 @@
       <div class="page-list-pager">
         <el-pagination
           background
-          layout="prev, pager, next"
+          layout="total, sizes, prev, pager, next"
           :total="total"
           :page-size="limit"
-          @current-change="(p: number) => { page = p; load(); }"
+          :current-page="page"
+          :page-sizes="[15, 50, 100, 200]"
+          @current-change="onPagerPageChange"
+          @size-change="onPageSizeChange"
         />
       </div>
     </div>
@@ -251,7 +254,15 @@ import { onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiErrorMessage } from "@/api/http";
-import { listPapers, createPaper, createPapersBatch, deletePaper, clearPaperItems } from "@/api/papers";
+import {
+  listPapers,
+  createPaper,
+  createPapersBatch,
+  deletePaper,
+  clearPaperItems,
+  batchAuditPapers,
+  batchUnauditPapers,
+} from "@/api/papers";
 import { listCourses } from "@/api/courses";
 import { listPaperLevels } from "@/api/paper_levels";
 import { listEnterprises } from "@/api/enterprises";
@@ -287,12 +298,17 @@ function paperSessionRefs(row: Record<string, unknown>) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function canDeleteRow(row: Record<string, unknown>) {
-  return paperItemCount(row) < 1 && paperSessionRefs(row) < 1;
+function paperAuditStatus(row: Record<string, unknown>) {
+  const s = row.audit_status;
+  return typeof s === "string" && s ? s : "draft";
 }
 
-function canUncomposeRow(row: Record<string, unknown>) {
-  return paperItemCount(row) > 0 && paperSessionRefs(row) < 1;
+function auditStatusLabel(row: Record<string, unknown>) {
+  return paperAuditStatus(row) === "reviewed" ? "审核" : "草稿";
+}
+
+function canDeleteRow(row: Record<string, unknown>) {
+  return paperAuditStatus(row) === "draft";
 }
 
 function onSelectionChange(sel: Record<string, unknown>[]) {
@@ -302,7 +318,7 @@ const rows = ref<Record<string, unknown>[]>([]);
 const selectedRows = ref<Record<string, unknown>[]>([]);
 const total = ref(0);
 const page = ref(1);
-const limit = ref(20);
+const limit = ref(15);
 const filterTitle = ref("");
 const filterCourse = ref("");
 const filterEnterprise = ref("");
@@ -396,6 +412,17 @@ async function load() {
 
 function doSearch() {
   page.value = 1;
+  void load();
+}
+
+function onPageSizeChange(sz: number) {
+  limit.value = sz;
+  page.value = 1;
+  void load();
+}
+
+function onPagerPageChange(p: number) {
+  page.value = p;
   void load();
 }
 
@@ -596,44 +623,46 @@ async function saveBatch() {
   }
 }
 
-function batchCompose() {
+async function batchAudit() {
   if (!selectedRows.value.length) {
     ElMessage.warning("请先勾选试卷");
     return;
   }
-  if (selectedRows.value.length > 1) {
-    ElMessage.warning("组卷请每次选择一套试卷");
+  const targets = selectedRows.value.filter((r) => paperAuditStatus(r) === "draft");
+  if (!targets.length) {
+    ElMessage.warning("所选试卷中没有草稿状态，无法审核");
     return;
   }
-  router.push("/papers/" + selectedRows.value[0].id);
+  try {
+    const { data } = await batchAuditPapers(targets.map((r) => r.id as number));
+    const n = (data as { updated?: number }).updated ?? 0;
+    ElMessage.success(n > 0 ? `已审核 ${n} 套` : "未变更");
+    await load();
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "批量审核失败"));
+  }
 }
 
-async function batchUncompose() {
+async function batchUnaudit() {
   if (!selectedRows.value.length) {
     ElMessage.warning("请先勾选试卷");
     return;
   }
-  const targets = selectedRows.value.filter((r) => canUncomposeRow(r));
+  const targets = selectedRows.value.filter(
+    (r) => paperAuditStatus(r) === "reviewed" && paperSessionRefs(r) < 1,
+  );
   if (!targets.length) {
-    ElMessage.warning("所选试卷无已组卷题目，或已被考试场次引用，无法反组卷");
+    ElMessage.warning("仅已审核且未被考试场次引用的试卷可反审核");
     return;
   }
-  await ElMessageBox.confirm(
-    `确定对 ${targets.length} 套试卷清空题目（反组卷）？`,
-    "批量反组卷",
-    { type: "warning" },
-  );
-  let ok = 0;
-  for (const r of targets) {
-    try {
-      await clearPaperItems(r.id as number);
-      ok++;
-    } catch (e) {
-      ElMessage.error(apiErrorMessage(e, `「${r.title}」反组卷失败`));
-    }
+  try {
+    const { data } = await batchUnauditPapers(targets.map((r) => r.id as number));
+    const n = (data as { updated?: number }).updated ?? 0;
+    ElMessage.success(n > 0 ? `已反审核 ${n} 套` : "未变更（可能已被场次引用）");
+    await load();
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "批量反审核失败"));
   }
-  if (ok) ElMessage.success(`已反组卷 ${ok} 套`);
-  await load();
 }
 
 async function batchDelete() {
@@ -643,10 +672,10 @@ async function batchDelete() {
   }
   const targets = selectedRows.value.filter((r) => canDeleteRow(r));
   if (!targets.length) {
-    ElMessage.warning("仅可删除未组卷且未被考试场次引用的试卷");
+    ElMessage.warning("仅可删除草稿（未审核）试卷");
     return;
   }
-  await ElMessageBox.confirm(`确定删除选中的 ${targets.length} 套空试卷？`, "批量删除", { type: "warning" });
+  await ElMessageBox.confirm(`确定删除选中的 ${targets.length} 套草稿试卷？`, "批量删除", { type: "warning" });
   let ok = 0;
   for (const r of targets) {
     try {
@@ -674,7 +703,7 @@ async function onUncompose(row: Record<string, unknown>) {
 
 async function onDel(row: Record<string, unknown>) {
   if (!canDeleteRow(row)) {
-    ElMessage.warning("已组卷或已被场次引用的试卷不可删除");
+    ElMessage.warning("已审核的试卷不可删除");
     return;
   }
   await ElMessageBox.confirm("确定删除该试卷？", "提示", { type: "warning" });
@@ -719,6 +748,11 @@ onMounted(async () => {
 }
 .rules-table {
   margin-bottom: 8px;
+}
+.batch-mgmt-label {
+  margin-right: 4px;
+  font-size: 13px;
+  color: #64748b;
 }
 .hint {
   margin-left: 12px;

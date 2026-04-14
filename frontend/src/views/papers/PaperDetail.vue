@@ -13,13 +13,64 @@
             paperTypeLabel(paper?.paper_type as string | undefined)
           }}；等级：{{ paper?.level_name || "—" }}
         </p>
-        <p class="meta meta-second">时长：{{ paper?.duration_minutes }} 分钟，总分：{{ formatScore(paper?.total_score) }}（小题分值合计）</p>
-        <div class="page-list-toolbar toolbar">
-          <el-input-number v-model="addQid" :min="1" placeholder="题目ID" />
-          <el-input-number v-model="addScore" :min="0" :step="0.5" />
-          <el-input-number v-model="addOrder" :min="0" placeholder="排序号" />
-          <el-button type="primary" @click="addItem"><AppEmoji name="addToPaper" size="sm" decorative />加入试卷</el-button>
+        <p class="meta meta-second">
+          时长：{{ paper?.duration_minutes }} 分钟，总分：{{ formatScore(paper?.total_score) }}（小题分值合计）；状态：{{
+            auditStatusLabel(paper?.audit_status as string | undefined)
+          }}
+        </p>
+      </div>
+      <div class="bank-panel">
+        <div class="page-list-toolbar toolbar bank-toolbar">
+          <span class="bank-hint">课程题库（已发布）</span>
+          <el-select
+            v-model="poolQType"
+            clearable
+            placeholder="题型"
+            style="width: 110px"
+            @change="resetPoolPage"
+          >
+            <el-option v-for="o in poolQTypeOpts" :key="o.value" :label="o.label" :value="o.value" />
+          </el-select>
+          <el-input
+            v-model="poolStem"
+            clearable
+            placeholder="题干关键词"
+            style="width: 200px"
+            @keyup.enter="searchPool"
+          />
+          <el-button type="primary" @click="searchPool">查询</el-button>
         </div>
+        <el-table v-loading="poolLoading" :data="poolRows" border size="small" class="bank-table" max-height="280">
+          <el-table-column prop="id" label="ID" width="72" />
+          <el-table-column prop="question_no" label="题号" width="120" show-overflow-tooltip />
+          <el-table-column label="题型" width="80">
+            <template #default="{ row }">{{ qTypeLabel((row as PoolRow).q_type) }}</template>
+          </el-table-column>
+          <el-table-column prop="stem" label="题干" min-width="160" show-overflow-tooltip />
+          <el-table-column label="操作" width="88" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="addFromPool(row as PoolRow)">加入</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="pool-pager">
+          <el-pagination
+            background
+            layout="total, sizes, prev, pager, next"
+            :total="poolTotal"
+            :page-size="poolLimit"
+            :current-page="poolPage"
+            :page-sizes="[15, 50, 100, 200]"
+            @current-change="onPoolPageChange"
+            @size-change="onPoolSizeChange"
+          />
+        </div>
+      </div>
+      <div class="page-list-toolbar toolbar">
+        <el-input-number v-model="addQid" :min="1" placeholder="题目ID" />
+        <el-input-number v-model="addScore" :min="0" :step="0.5" />
+        <el-input-number v-model="addOrder" :min="0" placeholder="排序号" />
+        <el-button type="primary" @click="addItem"><AppEmoji name="addToPaper" size="sm" decorative />加入试卷</el-button>
       </div>
       <div class="page-list-body">
         <div class="page-list-table">
@@ -64,6 +115,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
 import { getPaper, addPaperItem, removePaperItem } from "@/api/papers";
+import { listQuestions } from "@/api/questions";
 
 const route = useRoute();
 const id = Number(route.params.id);
@@ -72,6 +124,27 @@ const paper = ref<Record<string, unknown> | null>(null);
 const addQid = ref(1);
 const addScore = ref(1);
 const addOrder = ref(1);
+
+type PoolRow = { id: number; question_no?: string; q_type?: string; stem?: string };
+
+const poolQType = ref<string | undefined>(undefined);
+const poolStem = ref("");
+const poolPage = ref(1);
+const poolLimit = ref(15);
+const poolTotal = ref(0);
+const poolRows = ref<PoolRow[]>([]);
+const poolLoading = ref(false);
+
+const poolQTypeOpts = [
+  { value: "judge", label: "判断" },
+  { value: "single", label: "单选" },
+  { value: "multiple", label: "多选" },
+  { value: "fill", label: "填空" },
+];
+
+function auditStatusLabel(s: string | undefined) {
+  return s === "reviewed" ? "审核" : "草稿";
+}
 
 type QuestionBrief = {
   question_no?: string;
@@ -243,9 +316,67 @@ async function refresh() {
     const { data } = await getPaper(id);
     paper.value = data as Record<string, unknown>;
     syncNextSortOrder();
+    await loadPool();
   } finally {
     loading.value = false;
   }
+}
+
+async function loadPool() {
+  const cid = paper.value?.course_id as number | undefined;
+  if (cid == null || cid < 1) {
+    poolRows.value = [];
+    poolTotal.value = 0;
+    return;
+  }
+  poolLoading.value = true;
+  try {
+    const skip = (poolPage.value - 1) * poolLimit.value;
+    const params: Record<string, unknown> = {
+      skip,
+      limit: poolLimit.value,
+      course_id: cid,
+      status: "published",
+    };
+    const qt = (poolQType.value ?? "").trim();
+    if (qt) params.q_type = qt;
+    const kw = poolStem.value.trim();
+    if (kw) params.stem_keyword = kw;
+    const { data } = await listQuestions(params);
+    poolTotal.value = data.total;
+    poolRows.value = (data.items || []) as PoolRow[];
+  } catch {
+    poolRows.value = [];
+    poolTotal.value = 0;
+  } finally {
+    poolLoading.value = false;
+  }
+}
+
+function resetPoolPage() {
+  poolPage.value = 1;
+  void loadPool();
+}
+
+function searchPool() {
+  poolPage.value = 1;
+  void loadPool();
+}
+
+function onPoolPageChange(p: number) {
+  poolPage.value = p;
+  void loadPool();
+}
+
+function onPoolSizeChange(sz: number) {
+  poolLimit.value = sz;
+  poolPage.value = 1;
+  void loadPool();
+}
+
+async function addFromPool(row: PoolRow) {
+  addQid.value = row.id;
+  await addItem();
 }
 
 watch(
@@ -293,6 +424,26 @@ onMounted(refresh);
 }
 .items-table {
   width: 100%;
+}
+.bank-panel {
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}
+.bank-toolbar {
+  margin-bottom: 8px;
+}
+.bank-hint {
+  font-size: 13px;
+  color: #64748b;
+  margin-right: 8px;
+}
+.bank-table {
+  width: 100%;
+}
+.pool-pager {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
 }
 .paper-detail-page :deep(.el-card__header) {
   padding: 12px 16px;

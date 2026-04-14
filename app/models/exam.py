@@ -32,6 +32,9 @@ class ExamPaper(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     duration_minutes: Mapped[int] = mapped_column(Integer, default=60, comment="考试时长分钟")
     total_score: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("100.00"))
+    audit_status: Mapped[str] = mapped_column(
+        String(16), default="draft", index=True, comment="审核状态：draft 草稿，reviewed 已审核"
+    )
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("sys_user.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
