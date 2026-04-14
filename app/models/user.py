@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """用户与角色。"""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.enterprise import Enterprise
     from app.models.exam import ExamPaper, ExamSession, ExamAttempt
     from app.models.question import Question
+    from app.models.student import Student
 
 
 class Role(Base):
@@ -45,6 +46,15 @@ class User(Base):
     )
     role_id: Mapped[int] = mapped_column(ForeignKey("sys_role.id"), index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    student_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("student.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+        index=True,
+        comment="关联学员ID",
+    )
+    enable_date: Mapped[date] = mapped_column(Date, server_default=func.current_date(), comment="启用日期")
+    expire_date: Mapped[Optional[date]] = mapped_column(Date, comment="失效日期")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -52,6 +62,7 @@ class User(Base):
 
     role: Mapped["Role"] = relationship(back_populates="users", lazy="joined")
     enterprise: Mapped[Optional["Enterprise"]] = relationship("Enterprise", back_populates="users")
+    student: Mapped[Optional["Student"]] = relationship("Student", lazy="joined")
     questions_created: Mapped[List["Question"]] = relationship(
         "Question",
         back_populates="creator",

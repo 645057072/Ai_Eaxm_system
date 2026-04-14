@@ -9,6 +9,9 @@
       <el-button v-if="auth.can('list.user')" type="primary" @click="load"
         ><AppEmoji name="search" size="sm" decorative />查询</el-button
       >
+      <el-button v-if="auth.can('action.user.import')" type="warning" @click="openImport"
+        ><AppEmoji name="upload" size="sm" decorative />导入用户</el-button
+      >
       <el-button v-if="auth.can('action.user.create')" type="success" @click="openCreate"
         ><AppEmoji name="add" size="sm" decorative />新建用户</el-button
       >
@@ -19,6 +22,9 @@
       <el-table-column v-if="auth.can('list.user')" prop="id" label="ID" width="80" />
       <el-table-column v-if="auth.can('field.user.username')" prop="username" label="用户名" />
       <el-table-column v-if="auth.can('field.user.full_name')" prop="full_name" label="姓名" />
+      <el-table-column v-if="auth.can('field.user.student')" label="关联学员" min-width="160" show-overflow-tooltip>
+        <template #default="{ row }">{{ rowStudentLabel(row) }}</template>
+      </el-table-column>
       <el-table-column v-if="auth.can('field.user.enterprise')" label="所属企业" min-width="120" show-overflow-tooltip>
         <template #default="{ row }">{{ rowEnterpriseName(row) }}</template>
       </el-table-column>
@@ -37,6 +43,12 @@
             {{ row.is_active ? "是" : "否" }}
           </span>
         </template>
+      </el-table-column>
+      <el-table-column v-if="auth.can('field.user.enable_date')" label="启用日期" width="110" align="center">
+        <template #default="{ row }">{{ fmtDate(row.enable_date) }}</template>
+      </el-table-column>
+      <el-table-column v-if="auth.can('field.user.expire_date')" label="失效日期" width="110" align="center">
+        <template #default="{ row }">{{ fmtDate(row.expire_date) }}</template>
       </el-table-column>
       <el-table-column
         v-if="auth.canAny('action.user.update', 'action.user.delete')"
@@ -86,6 +98,20 @@
           </el-form-item>
         </template>
         <el-form-item v-if="auth.can('field.user.full_name')" label="姓名"><el-input v-model="form.full_name" /></el-form-item>
+        <el-form-item v-if="auth.can('field.user.student')" label="关联学员">
+          <el-select
+            v-model="form.student_id"
+            clearable
+            filterable
+            remote
+            :remote-method="remoteSearchStudent"
+            :loading="studentLoading"
+            placeholder="按学员编号/姓名搜索"
+            style="width: 100%"
+          >
+            <el-option v-for="s in studentOpts" :key="s.id" :label="studentOptLabel(s)" :value="s.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item v-if="editId && auth.can('field.user.enterprise')" label="所属企业">
           <el-input :model-value="(editEnterpriseName as string) || '—'" disabled />
         </el-form-item>
@@ -155,10 +181,35 @@
         <el-form-item v-if="editId && auth.can('field.user.is_active')" label="启用">
           <el-switch v-model="form.is_active" />
         </el-form-item>
+        <el-form-item v-if="auth.can('field.user.enable_date')" label="启用日期">
+          <el-date-picker v-model="form.enable_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+        </el-form-item>
+        <el-form-item v-if="auth.can('field.user.expire_date')" label="失效日期">
+          <el-date-picker v-model="form.expire_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dlg = false">取消</el-button>
         <el-button type="primary" @click="save">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="importDlg" title="导入用户" width="560px">
+      <div class="muted" style="margin-bottom: 10px">
+        支持 Word(docx)/Excel(xls,xlsx)/txt/csv。导入列：用户名、姓名、所属企业、角色、失效日期（启用日期默认当天，可选列：启用日期）。
+      </div>
+      <el-upload
+        :auto-upload="false"
+        :limit="1"
+        :on-change="onImportFileChange"
+        :show-file-list="true"
+        accept=".docx,.xls,.xlsx,.csv,.txt"
+      >
+        <el-button type="primary"><AppEmoji name="upload" size="sm" decorative />选择文件</el-button>
+      </el-upload>
+      <template #footer>
+        <el-button @click="importDlg = false">取消</el-button>
+        <el-button type="primary" :loading="importing" @click="doImport">开始导入</el-button>
       </template>
     </el-dialog>
   </div>
@@ -169,11 +220,12 @@ import { onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiErrorMessage } from "@/api/http";
 import { listEnterprises } from "@/api/enterprises";
-import { listUsers, createUser, patchUser, deleteUser } from "@/api/users";
+import { listUsers, createUser, patchUser, deleteUser, importUsers } from "@/api/users";
 import { listRoles, fetchRolePermissions } from "@/api/roles";
 import { fetchPermissionCatalog, type AuthModulePayload, type CatalogItem } from "@/api/permissions";
 import { useAuthStore } from "@/stores/auth";
 import { systemEmojiRoleKey, type SystemEmojiKey } from "@/assets/emoji/systemEmoji";
+import { listStudents } from "@/api/students";
 
 const auth = useAuthStore();
 
@@ -204,9 +256,94 @@ const form = reactive({
   role_id: 1,
   is_active: true,
   enterprise_id: null as number | null,
+  student_id: null as number | null,
+  enable_date: "" as string | "",
+  expire_date: "" as string | "",
 });
 const enterpriseOpts = ref<{ id: number; name: string }[]>([]);
 const editEnterpriseName = ref("");
+
+function fmtDate(v: unknown) {
+  if (!v) return "—";
+  return String(v);
+}
+
+function rowStudentLabel(row: Record<string, unknown>) {
+  const s = row.student as { student_no?: string; full_name?: string } | null | undefined;
+  if (!s) return "—";
+  const a = (s.student_no || "").trim();
+  const b = (s.full_name || "").trim();
+  return [a, b].filter(Boolean).join(" / ") || "—";
+}
+
+const studentOpts = ref<{ id: number; student_no: string; full_name: string }[]>([]);
+const studentLoading = ref(false);
+function studentOptLabel(s: { student_no: string; full_name: string }) {
+  const a = (s.student_no || "").trim();
+  const b = (s.full_name || "").trim();
+  return [a, b].filter(Boolean).join(" / ");
+}
+
+let studentFetchTimer: any = null;
+async function remoteSearchStudent(q: string) {
+  if (studentFetchTimer) clearTimeout(studentFetchTimer);
+  studentFetchTimer = setTimeout(async () => {
+    const kw = (q || "").trim();
+    if (!kw) {
+      studentOpts.value = [];
+      return;
+    }
+    studentLoading.value = true;
+    try {
+      const params: Record<string, unknown> = { skip: 0, limit: 20, student_keyword: kw, name_keyword: kw };
+      if (auth.isAdmin && form.enterprise_id) params.enterprise_id = form.enterprise_id;
+      const res = await listStudents(params);
+      const items = (res.data?.items || []) as any[];
+      studentOpts.value = items.map((x) => ({ id: x.id, student_no: x.student_no, full_name: x.full_name }));
+    } finally {
+      studentLoading.value = false;
+    }
+  }, 250);
+}
+
+function todayStr() {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+const importDlg = ref(false);
+const importing = ref(false);
+let importFile: File | null = null;
+function openImport() {
+  importFile = null;
+  importDlg.value = true;
+}
+function onImportFileChange(file: any) {
+  importFile = file?.raw || null;
+}
+async function doImport() {
+  if (!importFile) {
+    ElMessage.warning("请选择导入文件");
+    return;
+  }
+  importing.value = true;
+  try {
+    const fd = new FormData();
+    fd.append("file", importFile);
+    const res = await importUsers(fd);
+    const created = res.data?.created ?? 0;
+    const skipped = res.data?.skipped ?? 0;
+    ElMessage.success(`导入完成：新增 ${created}，跳过 ${skipped}`);
+    importDlg.value = false;
+    await load();
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "导入失败"));
+  } finally {
+    importing.value = false;
+  }
+}
 
 const rolePreviewLoading = ref(false);
 const rolePreviewCodes = ref<string[]>([]);
@@ -284,6 +421,9 @@ function openCreate() {
   form.role_id = roleOpts.value[0]?.id ?? 1;
   form.is_active = true;
   form.enterprise_id = enterpriseOpts.value[0]?.id ?? auth.me?.enterprise?.id ?? null;
+  form.student_id = null;
+  form.enable_date = todayStr();
+  form.expire_date = "";
   dlg.value = true;
 }
 
@@ -294,6 +434,9 @@ function openEdit(row: Record<string, unknown>) {
   form.role_id = (row.role as { id: number }).id;
   form.is_active = !!row.is_active;
   editEnterpriseName.value = ((row.enterprise as { name?: string } | null)?.name as string) || "";
+  form.student_id = (row.student_id as number) || null;
+  form.enable_date = (row.enable_date as string) || "";
+  form.expire_date = (row.expire_date as string) || "";
   dlg.value = true;
 }
 
@@ -339,6 +482,9 @@ async function save() {
         password,
         full_name: fn || null,
         role_id: roleIdNum,
+        student_id: form.student_id || null,
+        enable_date: form.enable_date || null,
+        expire_date: form.expire_date || null,
       };
       if (auth.isAdmin && enterpriseIdNum != null) body.enterprise_id = enterpriseIdNum;
       await createUser(body);
@@ -357,6 +503,9 @@ async function save() {
         full_name: fn || null,
         role_id: roleIdNum,
         is_active: form.is_active,
+        student_id: form.student_id || null,
+        enable_date: form.enable_date || null,
+        expire_date: form.expire_date || null,
       };
       if (form.password) {
         if (form.password.length < 6) {

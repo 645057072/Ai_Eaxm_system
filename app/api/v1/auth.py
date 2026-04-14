@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
@@ -21,6 +23,8 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号已禁用")
+    if user.expire_date is not None and date.today() > user.expire_date:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="用户已失效，请联系管理员")
     token = create_access_token(user.id, extra={"role": user.role.code if user.role else ""})
     return TokenResponse(access_token=token)
 

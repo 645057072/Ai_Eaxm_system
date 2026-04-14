@@ -15,3 +15,7 @@ export function patchUser(id: number, body: Record<string, unknown>) {
 export function deleteUser(id: number) {
   return http.delete(`/v1/users/${id}`);
 }
+
+export function importUsers(fd: FormData) {
+  return http.post("/v1/users/import", fd, { headers: { "Content-Type": "multipart/form-data" } });
+}
