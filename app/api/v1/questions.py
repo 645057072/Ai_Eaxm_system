@@ -338,8 +338,11 @@ async def import_questions(
         if total_bytes > total_max:
             raise HTTPException(status_code=400, detail="多文件合计超过 60MB，请分批导入")
         text_sources: list[tuple[str, str]] = []
+        excel_items: list[dict] = []
+        excel_logs: list[str] = []
         image_items: list[dict] = []
         file_labels: list[str] = []
+        merge_logs: list[str] = []
         for fn, raw in raw_entries:
             file_labels.append(fn)
             ext = (fn.rsplit(".", 1)[-1] if "." in fn else "").lower()
@@ -347,12 +350,10 @@ async def import_questions(
                 image_items.append(build_image_placeholder(fn))
                 continue
             if ext in ("xls", "xlsx") and not get_settings().llm_enabled:
-                excel_items, excel_logs = build_questions_from_excel_table(fn, raw)
-                if excel_items:
-                    parsed_items = []
-                    text_sources = []
-                    image_items.extend(excel_items)
-                    merge_logs.extend(excel_logs)
+                items_one, logs_one = build_questions_from_excel_table(fn, raw)
+                if items_one:
+                    excel_items.extend(items_one)
+                    excel_logs.extend(logs_one)
                     continue
             try:
                 text = extract_plain_text(fn, raw)
@@ -372,7 +373,8 @@ async def import_questions(
                 image_items.append(build_image_placeholder(fn))
             else:
                 text_sources.append((fn, text))
-        merge_logs: list[str] = []
+        if excel_logs:
+            merge_logs.extend(excel_logs)
         if text_sources:
             # 若启用 LLM，则直接用 LLM 解析每份文本文件（不走规则推断）
             if get_settings().llm_enabled:
@@ -392,7 +394,7 @@ async def import_questions(
                     raise HTTPException(status_code=400, detail=f"题目文本合并失败：{e!s}") from e
         else:
             parsed_items = []
-        items = [*image_items, *parsed_items]
+        items = [*image_items, *excel_items, *parsed_items]
         if not items:
             raise HTTPException(status_code=400, detail="未能从文件中解析出题目")
         _qtype_cn = {"single": "单选", "multiple": "多选", "judge": "判断", "fill": "填空"}
