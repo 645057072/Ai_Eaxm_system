@@ -30,6 +30,22 @@ def _text_from_xlsx(raw: bytes) -> str:
     return "\n".join(lines)
 
 
+def _text_from_xls(raw: bytes) -> str:
+    """读取老版 Excel（.xls）。"""
+    import xlrd
+
+    book = xlrd.open_workbook(file_contents=raw)
+    sh = book.sheet_by_index(0)
+    lines: List[str] = []
+    for r in range(sh.nrows):
+        parts: List[str] = []
+        for c in range(sh.ncols):
+            v = sh.cell_value(r, c)
+            parts.append("" if v is None else str(v).strip())
+        lines.append("\t".join(parts))
+    return "\n".join(lines)
+
+
 def _text_from_docx(raw: bytes) -> str:
     import docx
 
@@ -66,6 +82,8 @@ def extract_plain_text(filename: str, raw: bytes) -> str:
         return "\n".join(lines)
     if ext == ".xlsx":
         return _text_from_xlsx(raw)
+    if ext == ".xls":
+        return _text_from_xls(raw)
     if ext == ".docx":
         return _text_from_docx(raw)
     if ext == ".pdf":

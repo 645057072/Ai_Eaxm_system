@@ -352,7 +352,7 @@ async def import_questions(
                     status_code=400,
                     detail=(
                         f"服务端未安装解析依赖「{e.name}」。"
-                        "请在 api 容器内执行 pip install -r requirements.txt（需含 pypdf、openpyxl、python-docx）后重建镜像。"
+                        "请在 api 容器内执行 pip install -r requirements.txt（需含 pypdf、openpyxl、xlrd、python-docx）后重建镜像。"
                     ),
                 ) from e
             except Exception as e:
