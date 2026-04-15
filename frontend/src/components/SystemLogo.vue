@@ -169,6 +169,23 @@ const badgeFill = computed(() => (lightBg.value ? "#0ea5e9" : "#0284c7"));
   gap: 12px;
 }
 
+/* 侧栏/顶栏内与父级同宽，便于标题区按实际可用宽度排版 */
+.variant-sidebar.system-logo,
+.variant-header.system-logo {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.variant-sidebar.system-logo .titles,
+.variant-header.system-logo .titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.variant-sidebar.system-logo {
+  width: 100%;
+}
+
 .mark {
   flex-shrink: 0;
   display: block;
@@ -237,12 +254,19 @@ const badgeFill = computed(() => (lightBg.value ? "#0ea5e9" : "#0284c7"));
   gap: 0;
 }
 
+/* 中英文同一列宽；英文更长，单独缩小字号与字距以免挤出布局 */
 .variant-sidebar .name,
 .variant-header .name {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+}
+
+.variant-sidebar .name.cn,
+.variant-header .name.cn {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 220px;
 }
 
 .variant-sidebar .name.cn {
@@ -257,11 +281,14 @@ const badgeFill = computed(() => (lightBg.value ? "#0ea5e9" : "#0284c7"));
 }
 
 .variant-sidebar .name.en {
-  font-size: 0.72rem;
+  font-size: 0.44rem;
   font-weight: 700;
   color: #64748b;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.015em;
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .variant-sidebar .sub {
@@ -281,11 +308,15 @@ const badgeFill = computed(() => (lightBg.value ? "#0ea5e9" : "#0284c7"));
 }
 
 .variant-header .name.en {
-  font-size: 0.7rem;
+  /* 顶栏中文 title 更短，英文需更小才能与中文行宽接近 */
+  font-size: 0.42rem;
   font-weight: 700;
   color: #64748b;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.01em;
   line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .variant-header {

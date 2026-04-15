@@ -125,8 +125,13 @@ def lookup_students(
     conds: list = [
         (Student.student_no.like(f"%{kw}%")) | (Student.full_name.like(f"%{kw}%")),
     ]
-    if enterprise_id is not None and is_super_role(current):
+    # 按用户所属企业限定：超管须传 enterprise_id，否则不返回数据，避免跨企业误选
+    if enterprise_id is not None:
+        if not is_super_role(current):
+            ensure_same_enterprise(current, enterprise_id)
         conds.append(Student.enterprise_id == enterprise_id)
+    elif is_super_role(current):
+        return {"items": []}
     w = and_(*conds) if conds else None
 
     q = select(Student).order_by(Student.id.desc()).limit(limit)

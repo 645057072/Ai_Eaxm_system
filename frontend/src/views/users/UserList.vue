@@ -262,6 +262,8 @@ const form = reactive({
 });
 const enterpriseOpts = ref<{ id: number; name: string }[]>([]);
 const editEnterpriseName = ref("");
+/** 编辑用户时该行所属企业 ID，用于关联学员仅检索本企业学员 */
+const editEnterpriseId = ref<number | null>(null);
 
 function fmtDate(v: unknown) {
   if (!v) return "—";
@@ -271,17 +273,24 @@ function fmtDate(v: unknown) {
 function rowStudentLabel(row: Record<string, unknown>) {
   const s = row.student as { student_no?: string; full_name?: string } | null | undefined;
   if (!s) return "—";
-  const a = (s.student_no || "").trim();
-  const b = (s.full_name || "").trim();
-  return [a, b].filter(Boolean).join(" / ") || "—";
+  const name = (s.full_name || "").trim();
+  const no = (s.student_no || "").trim();
+  if (name && no) return `${name}（${no}）`;
+  return name || no || "—";
 }
 
 const studentOpts = ref<{ id: number; student_no: string; full_name: string }[]>([]);
 const studentLoading = ref(false);
 function studentOptLabel(s: { student_no: string; full_name: string }) {
-  const a = (s.student_no || "").trim();
-  const b = (s.full_name || "").trim();
-  return [a, b].filter(Boolean).join(" / ");
+  const name = (s.full_name || "").trim();
+  const no = (s.student_no || "").trim();
+  if (name && no) return `${name}（${no}）`;
+  return name || no || "—";
+}
+
+function scopeEnterpriseIdForStudent(): number | null {
+  if (editId.value) return editEnterpriseId.value;
+  return form.enterprise_id ?? auth.me?.enterprise?.id ?? null;
 }
 
 let studentFetchTimer: any = null;
@@ -289,14 +298,18 @@ async function remoteSearchStudent(q: string) {
   if (studentFetchTimer) clearTimeout(studentFetchTimer);
   studentFetchTimer = setTimeout(async () => {
     const kw = (q || "").trim();
+    const entId = scopeEnterpriseIdForStudent();
     if (!kw) {
+      return;
+    }
+    if (entId == null) {
       studentOpts.value = [];
+      ElMessage.warning("请先选择所属企业后再检索学员");
       return;
     }
     studentLoading.value = true;
     try {
-      const params: Record<string, unknown> = { keyword: kw, limit: 20 };
-      if (auth.isAdmin && form.enterprise_id) params.enterprise_id = form.enterprise_id;
+      const params: Record<string, unknown> = { keyword: kw, limit: 20, enterprise_id: entId };
       const res = await lookupStudents(params);
       const items = (res.data?.items || []) as any[];
       studentOpts.value = items.map((x) => ({ id: x.id, student_no: x.student_no, full_name: x.full_name }));
@@ -372,6 +385,16 @@ function modHasAny(mod: AuthModulePayload) {
 }
 
 watch(
+  () => form.enterprise_id,
+  () => {
+    if (!editId.value) {
+      form.student_id = null;
+      studentOpts.value = [];
+    }
+  },
+);
+
+watch(
   [() => dlg.value, () => form.role_id, () => editId.value],
   async ([d, rid, eid]) => {
     if (!d || eid) {
@@ -415,6 +438,7 @@ async function load() {
 function openCreate() {
   editId.value = null;
   editEnterpriseName.value = "";
+  editEnterpriseId.value = null;
   form.username = "";
   form.password = "";
   form.full_name = "";
@@ -424,6 +448,7 @@ function openCreate() {
   form.student_id = null;
   form.enable_date = todayStr();
   form.expire_date = "";
+  studentOpts.value = [];
   dlg.value = true;
 }
 
@@ -434,9 +459,25 @@ function openEdit(row: Record<string, unknown>) {
   form.role_id = (row.role as { id: number }).id;
   form.is_active = !!row.is_active;
   editEnterpriseName.value = ((row.enterprise as { name?: string } | null)?.name as string) || "";
+  editEnterpriseId.value =
+    (row.enterprise_id as number | null | undefined) ??
+    ((row.enterprise as { id?: number } | null | undefined)?.id as number | undefined) ??
+    null;
   form.student_id = (row.student_id as number) || null;
   form.enable_date = (row.enable_date as string) || "";
   form.expire_date = (row.expire_date as string) || "";
+  const st = row.student as { id: number; student_no?: string; full_name?: string } | null | undefined;
+  if (st && form.student_id) {
+    studentOpts.value = [
+      {
+        id: st.id,
+        student_no: (st.student_no || "") as string,
+        full_name: (st.full_name || "") as string,
+      },
+    ];
+  } else {
+    studentOpts.value = [];
+  }
   dlg.value = true;
 }
 
