@@ -36,6 +36,16 @@
             <el-table-column label="学员" min-width="160" show-overflow-tooltip>
               <template #default="{ row }">{{ formatStudentCell(row) }}</template>
             </el-table-column>
+            <el-table-column label="得分" width="90" align="right">
+              <template #default="{ row }">{{ row.score ?? "—" }}</template>
+            </el-table-column>
+            <el-table-column label="是否及格" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag v-if="row.passed === true" type="success" size="small">及格</el-tag>
+                <el-tag v-else-if="row.passed === false" type="danger" size="small">不及格</el-tag>
+                <span v-else>—</span>
+              </template>
+            </el-table-column>
                        <el-table-column prop="created_at" label="创建时间" width="170">
               <template #default="{ row }">{{ fmtTime(row.created_at) }}</template>
             </el-table-column>

@@ -434,6 +434,12 @@ onUnmounted(() => {
   z-index: 10;
   background: #fff;
 }
+.take-exam-card {
+  overflow: visible;
+}
+.take-exam-card :deep(.el-card__body) {
+  overflow: visible;
+}
 .exam-hdr {
   display: flex;
   align-items: center;

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -19,6 +20,8 @@ class ExamCandidateOut(BaseModel):
     session_id: Optional[int] = None
     last_attempt_id: Optional[int] = None
     answer_duration_seconds: Optional[int] = None
+    score: Optional[Decimal] = None
+    passed: Optional[bool] = None
     created_at: datetime
     updated_at: datetime
 

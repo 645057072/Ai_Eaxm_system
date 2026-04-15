@@ -4,7 +4,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -36,6 +36,12 @@ class ExamCandidate(Base):
     )
     answer_duration_seconds: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True, comment="在线作答时长（秒），交卷后写入"
+    )
+    score: Mapped[Optional[float]] = mapped_column(
+        Numeric(10, 2), nullable=True, comment="最近一次交卷得分"
+    )
+    passed: Mapped[Optional[bool]] = mapped_column(
+        Boolean, nullable=True, comment="最近一次交卷是否及格"
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

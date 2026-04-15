@@ -29,6 +29,9 @@
             <el-table-column label="试卷编号" width="130" show-overflow-tooltip>
               <template #default="{ row }">{{ (row.paper_no as string) || "—" }}</template>
             </el-table-column>
+            <el-table-column label="试卷类型" width="110" align="center">
+              <template #default="{ row }">{{ String(row.paper_type || "—") }}</template>
+            </el-table-column>
             <el-table-column label="操作" width="140">
               <template #default="{ row }">
                 <el-button type="primary" link @click="goTake(row.id as number)"
