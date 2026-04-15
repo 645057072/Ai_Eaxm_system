@@ -55,6 +55,25 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = ""
 
+    @field_validator("llm_enabled", mode="before")
+    @classmethod
+    def _llm_enabled_coerce(cls, v: object) -> bool:
+        """兼容 docker-compose 传空字符串导致 bool 解析失败。"""
+        if v is None:
+            return False
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, (int, float)):
+            return bool(v)
+        if isinstance(v, str):
+            s = v.strip().lower()
+            if s in ("", "0", "false", "no", "off", "n"):
+                return False
+            if s in ("1", "true", "yes", "on", "y"):
+                return True
+        # 兜底：保持关闭，避免启动失败
+        return False
+
 
 @lru_cache
 def get_settings() -> Settings:
