@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.deps import get_db, require_permission
+from app.api.deps import get_db, require_any_permission, require_permission
 from app.core.permissions import is_super_role
 from app.models.enterprise import Enterprise
 from app.models.paper_level import PaperLevel
@@ -41,12 +41,15 @@ def _out_from_row(db: Session, row: PaperLevel) -> PaperLevelOut:
 @router.get("", response_model=PageResult[PaperLevelOut])
 def list_paper_levels(
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_permission("list.paper_level"))],
+    current: Annotated[
+        User,
+        Depends(require_any_permission("list.paper_level", "list.paper", "action.paper.manage")),
+    ],
     page: Annotated[PageParams, Depends()],
     keyword: str | None = Query(default=None, description="编号、名称、职称系列"),
     enterprise_id: int | None = Query(default=None, description="超管按企业筛选"),
 ) -> PageResult[PaperLevelOut]:
-    """试卷等级列表。"""
+    """试卷等级列表（组卷等场景仅需试卷/组卷权限即可下拉数据）。"""
     if not is_super_role(current) and current.enterprise_id is None:
         return PageResult[PaperLevelOut](total=0, items=[])
 
@@ -145,7 +148,10 @@ def create_paper_level(
 def get_paper_level(
     level_id: int,
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_permission("list.paper_level"))],
+    current: Annotated[
+        User,
+        Depends(require_any_permission("list.paper_level", "list.paper", "action.paper.manage")),
+    ],
 ) -> PaperLevelOut:
     row = db.scalars(
         select(PaperLevel).options(joinedload(PaperLevel.enterprise)).where(PaperLevel.id == level_id)

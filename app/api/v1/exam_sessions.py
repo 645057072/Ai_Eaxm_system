@@ -4,8 +4,8 @@
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import and_, func, or_, select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.api.deps import get_db, require_any_permission, require_permission
@@ -17,13 +17,61 @@ from app.schemas.attempt import AttemptStartOut
 from app.schemas.common import PageParams, PageResult
 from app.schemas.exam_take import TakeDataOut, TakeQuestionItem
 from app.schemas.session import ExamSessionCreate, ExamSessionOut, ExamSessionUpdate
-from app.services.data_scope import assert_paper_in_enterprise, assert_session_in_enterprise, session_list_tenant_filter
+from app.services.data_scope import (
+    assert_paper_in_enterprise,
+    assert_session_in_enterprise,
+    ensure_in_managed_enterprise_scope,
+    session_list_tenant_filter,
+)
 
 router = APIRouter()
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _validate_session_business(
+    db: Session,
+    current: User,
+    *,
+    paper_id: int,
+    enterprise_id: int,
+    course_id: int,
+) -> None:
+    """场次所属企业、课程与试卷一致且在数据权限内。"""
+    ensure_in_managed_enterprise_scope(db, current, enterprise_id)
+    paper = db.get(ExamPaper, paper_id)
+    if paper is None:
+        raise HTTPException(status_code=404, detail="试卷不存在")
+    assert_paper_in_enterprise(db, current, paper_id)
+    course = db.get(Course, course_id)
+    if course is None:
+        raise HTTPException(status_code=404, detail="课程不存在")
+    if course.enterprise_id != enterprise_id:
+        raise HTTPException(status_code=400, detail="课程与所属企业不一致")
+    if paper.course_id is not None and paper.course_id != course_id:
+        raise HTTPException(status_code=400, detail="所选课程与试卷已关联课程不一致")
+
+
+def _session_to_out(s: ExamSession) -> ExamSessionOut:
+    return ExamSessionOut(
+        id=s.id,
+        session_code=s.session_code,
+        enterprise_id=s.enterprise_id,
+        course_id=s.course_id,
+        enterprise_name=s.enterprise.name if s.enterprise else None,
+        course_name=s.course.name if s.course else None,
+        paper_id=s.paper_id,
+        title=s.title,
+        start_at=s.start_at,
+        end_at=s.end_at,
+        status=s.status,
+        created_by=s.created_by,
+        created_at=s.created_at,
+        updated_at=s.updated_at,
+        paper=None,
+    )
 
 
 def _assert_paper_valid_for_session(db: Session, paper_id: int) -> None:
@@ -58,24 +106,16 @@ def list_available_for_student(
         ExamSession.start_at <= now,
         ExamSession.end_at >= now,
     ]
-    PaperCreator = aliased(User)
-    # 考生端仅展示本人所属企业的场次，不按企业树扩张
+    # 考生端仅展示本人所属企业的场次（场次表 enterprise_id，与企业管理一致）
     if not is_super_role(current):
         if current.enterprise_id is None:
             return PageResult[ExamSessionOut](total=0, items=[])
-        conds.append(
-            or_(
-                Course.enterprise_id == current.enterprise_id,
-                and_(ExamPaper.course_id.is_(None), PaperCreator.enterprise_id == current.enterprise_id),
-            )
-        )
+        conds.append(ExamSession.enterprise_id == current.enterprise_id)
     total = (
         db.scalar(
             select(func.count())
             .select_from(ExamSession)
             .join(ExamPaper, ExamSession.paper_id == ExamPaper.id)
-            .outerjoin(Course, ExamPaper.course_id == Course.id)
-            .outerjoin(PaperCreator, ExamPaper.created_by == PaperCreator.id)
             .where(*conds)
         )
         or 0
@@ -83,14 +123,13 @@ def list_available_for_student(
     rows = db.scalars(
         select(ExamSession)
         .join(ExamPaper, ExamSession.paper_id == ExamPaper.id)
-        .outerjoin(Course, ExamPaper.course_id == Course.id)
-        .outerjoin(PaperCreator, ExamPaper.created_by == PaperCreator.id)
+        .options(joinedload(ExamSession.enterprise), joinedload(ExamSession.course))
         .where(*conds)
         .order_by(ExamSession.id.desc())
         .offset(page.skip)
         .limit(page.limit)
     ).all()
-    return PageResult[ExamSessionOut](total=int(total), items=[ExamSessionOut.model_validate(r) for r in rows])
+    return PageResult[ExamSessionOut](total=int(total), items=[_session_to_out(r) for r in rows])
 
 
 @router.get("", response_model=PageResult[ExamSessionOut])
@@ -99,6 +138,8 @@ def list_sessions(
     current: Annotated[User, Depends(require_permission("list.session"))],
     page: Annotated[PageParams, Depends()],
     status: str | None = None,
+    enterprise_id: int | None = Query(default=None, ge=1, description="按所属企业筛选"),
+    course_id: int | None = Query(default=None, ge=1, description="按关联课程筛选"),
 ) -> PageResult[ExamSessionOut]:
     """本企业场次列表。"""
     PaperCreator = aliased(User)
@@ -114,6 +155,12 @@ def list_sessions(
         stmt = stmt.where(tf)
     if status:
         stmt = stmt.where(ExamSession.status == status)
+    if enterprise_id is not None:
+        if not is_super_role(current):
+            ensure_in_managed_enterprise_scope(db, current, enterprise_id)
+        stmt = stmt.where(ExamSession.enterprise_id == enterprise_id)
+    if course_id is not None:
+        stmt = stmt.where(ExamSession.course_id == course_id)
     total = db.scalar(stmt) or 0
     q = (
         select(ExamSession)
@@ -125,8 +172,17 @@ def list_sessions(
         q = q.where(session_list_tenant_filter(PaperCreator, db, current))
     if status:
         q = q.where(ExamSession.status == status)
-    rows = db.scalars(q.offset(page.skip).limit(page.limit).order_by(ExamSession.id.desc())).all()
-    return PageResult[ExamSessionOut](total=int(total), items=[ExamSessionOut.model_validate(r) for r in rows])
+    if enterprise_id is not None:
+        q = q.where(ExamSession.enterprise_id == enterprise_id)
+    if course_id is not None:
+        q = q.where(ExamSession.course_id == course_id)
+    rows = db.scalars(
+        q.options(joinedload(ExamSession.enterprise), joinedload(ExamSession.course))
+        .offset(page.skip)
+        .limit(page.limit)
+        .order_by(ExamSession.id.desc())
+    ).all()
+    return PageResult[ExamSessionOut](total=int(total), items=[_session_to_out(r) for r in rows])
 
 
 @router.post("", response_model=ExamSessionOut)
@@ -136,9 +192,21 @@ def create_session(
     current: Annotated[User, Depends(require_permission("action.session.manage"))],
 ) -> ExamSessionOut:
     """创建场次。"""
-    assert_paper_in_enterprise(db, current, body.paper_id)
+    code = body.session_code.strip()
+    if db.scalar(select(func.count()).select_from(ExamSession).where(ExamSession.session_code == code)):
+        raise HTTPException(status_code=400, detail="场次编码已存在")
+    _validate_session_business(
+        db,
+        current,
+        paper_id=body.paper_id,
+        enterprise_id=body.enterprise_id,
+        course_id=body.course_id,
+    )
     _assert_paper_valid_for_session(db, body.paper_id)
     s = ExamSession(
+        session_code=code,
+        enterprise_id=body.enterprise_id,
+        course_id=body.course_id,
         paper_id=body.paper_id,
         title=body.title,
         start_at=body.start_at,
@@ -149,7 +217,13 @@ def create_session(
     db.add(s)
     db.commit()
     db.refresh(s)
-    return ExamSessionOut.model_validate(s)
+    s2 = db.scalars(
+        select(ExamSession)
+        .options(joinedload(ExamSession.enterprise), joinedload(ExamSession.course))
+        .where(ExamSession.id == s.id)
+    ).first()
+    assert s2 is not None
+    return _session_to_out(s2)
 
 
 @router.get("/{session_id}", response_model=ExamSessionOut)
@@ -169,11 +243,15 @@ def get_session(
     ],
 ) -> ExamSessionOut:
     """场次详情。"""
-    s = db.get(ExamSession, session_id)
+    s = db.scalars(
+        select(ExamSession)
+        .options(joinedload(ExamSession.enterprise), joinedload(ExamSession.course))
+        .where(ExamSession.id == session_id)
+    ).first()
     if s is None:
         raise HTTPException(status_code=404, detail="场次不存在")
     assert_session_in_enterprise(db, current, session_id)
-    return ExamSessionOut.model_validate(s)
+    return _session_to_out(s)
 
 
 @router.patch("/{session_id}", response_model=ExamSessionOut)
@@ -185,11 +263,35 @@ def update_session(
 ) -> ExamSessionOut:
     s = assert_session_in_enterprise(db, current, session_id)
     data = body.model_dump(exclude_unset=True)
+    if "session_code" in data and data["session_code"] is not None:
+        sc = data["session_code"].strip()
+        if sc != s.session_code and (
+            db.scalar(
+                select(func.count()).select_from(ExamSession).where(
+                    ExamSession.session_code == sc, ExamSession.id != session_id
+                )
+            )
+        ):
+            raise HTTPException(status_code=400, detail="场次编码已存在")
+        data["session_code"] = sc
+    pid = data.get("paper_id", s.paper_id)
+    eid = data.get("enterprise_id", s.enterprise_id)
+    cid = data.get("course_id", s.course_id)
+    if any(k in data for k in ("paper_id", "enterprise_id", "course_id")):
+        if cid is None:
+            raise HTTPException(status_code=400, detail="请指定关联课程")
+        _validate_session_business(db, current, paper_id=pid, enterprise_id=eid, course_id=cid)
     for k, v in data.items():
         setattr(s, k, v)
     db.commit()
     db.refresh(s)
-    return ExamSessionOut.model_validate(s)
+    s2 = db.scalars(
+        select(ExamSession)
+        .options(joinedload(ExamSession.enterprise), joinedload(ExamSession.course))
+        .where(ExamSession.id == session_id)
+    ).first()
+    assert s2 is not None
+    return _session_to_out(s2)
 
 
 @router.post("/{session_id}/publish", response_model=ExamSessionOut)
@@ -204,7 +306,13 @@ def publish_session(
     s.status = "published"
     db.commit()
     db.refresh(s)
-    return ExamSessionOut.model_validate(s)
+    s2 = db.scalars(
+        select(ExamSession)
+        .options(joinedload(ExamSession.enterprise), joinedload(ExamSession.course))
+        .where(ExamSession.id == session_id)
+    ).first()
+    assert s2 is not None
+    return _session_to_out(s2)
 
 
 @router.get("/{session_id}/take-data", response_model=TakeDataOut)

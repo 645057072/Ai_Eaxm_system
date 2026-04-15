@@ -256,12 +256,15 @@ def list_papers(
     page: Annotated[PageParams, Depends()],
     title_keyword: str | None = Query(default=None, description="试卷名称模糊匹配"),
     course_keyword: str | None = Query(default=None, description="关联课程名称模糊匹配"),
+    course_id: int | None = Query(default=None, ge=1, description="按课程 ID 精确筛选（场次选卷等）"),
     enterprise_keyword: str | None = Query(default=None, description="所属企业名称模糊匹配"),
     paper_type_keyword: str | None = Query(default=None, description="试卷类型模糊匹配（如 formal、mock）"),
 ) -> PageResult[PaperSummary]:
     """本企业试卷列表；支持名称、课程、企业、类型模糊筛选。"""
     data_stmt, ent_course, ent_creator = _paper_list_base_stmt()
     data_stmt = restrict_exam_paper_query_by_tenant(data_stmt, db, current)
+    if course_id is not None:
+        data_stmt = data_stmt.where(ExamPaper.course_id == course_id)
     data_stmt = _apply_paper_list_keyword_filters(
         data_stmt, ent_course, ent_creator, title_keyword, course_keyword, enterprise_keyword, paper_type_keyword
     )
@@ -275,6 +278,8 @@ def list_papers(
         .outerjoin(ent_creator, User.enterprise_id == ent_creator.id)
     )
     cnt = restrict_exam_paper_query_by_tenant(cnt, db, current)
+    if course_id is not None:
+        cnt = cnt.where(ExamPaper.course_id == course_id)
     cnt = _apply_paper_list_keyword_filters(
         cnt, ent_course, ent_creator, title_keyword, course_keyword, enterprise_keyword, paper_type_keyword
     )

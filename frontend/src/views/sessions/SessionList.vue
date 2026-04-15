@@ -5,47 +5,90 @@
         <div class="page-list-card-title"><AppEmoji name="sessions" size="sm" decorative />考试场次</div>
       </template>
       <div class="page-list-toolbar toolbar">
-      <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建场次</el-button>
-    </div>
-    <div class="page-list-body">
-      <div class="page-list-table">
-        <el-table :data="rows" height="100%">
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="title" label="标题" />
-      <el-table-column prop="paper_id" label="试卷ID" width="90" />
-      <el-table-column prop="status" label="状态" width="100" />
-      <el-table-column label="开始" width="170">
-        <template #default="{ row }">{{ fmt(row.start_at) }}</template>
-      </el-table-column>
-      <el-table-column label="结束" width="170">
-        <template #default="{ row }">{{ fmt(row.end_at) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="220">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)"><AppEmoji name="edit" size="sm" decorative />编辑</el-button>
-          <el-button v-if="row.status !== 'published'" link type="success" @click="publish(row)"
-            ><AppEmoji name="publish" size="sm" decorative />发布</el-button
-          >
-        </template>
-      </el-table-column>
-    </el-table>
+        <el-button type="success" @click="openCreate"><AppEmoji name="add" size="sm" decorative />新建场次</el-button>
       </div>
-      <div class="page-list-pager">
-        <el-pagination
-          background
-          layout="prev, pager, next"
-          :total="total"
-          :page-size="limit"
-          @current-change="(p: number) => { page = p; load(); }"
-        />
+      <div class="page-list-body">
+        <div class="page-list-table">
+          <el-table :data="rows" height="100%">
+            <el-table-column prop="id" label="ID" width="70" />
+            <el-table-column prop="session_code" label="场次编码" width="120" show-overflow-tooltip />
+            <el-table-column label="所属企业" min-width="140" show-overflow-tooltip>
+              <template #default="{ row }">{{ (row.enterprise_name as string) || "—" }}</template>
+            </el-table-column>
+            <el-table-column label="课程" min-width="120" show-overflow-tooltip>
+              <template #default="{ row }">{{ (row.course_name as string) || "—" }}</template>
+            </el-table-column>
+            <el-table-column prop="title" label="标题" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="paper_id" label="试卷ID" width="90" />
+            <el-table-column prop="status" label="状态" width="100" />
+            <el-table-column label="开始" width="170">
+              <template #default="{ row }">{{ fmt(row.start_at) }}</template>
+            </el-table-column>
+            <el-table-column label="结束" width="170">
+              <template #default="{ row }">{{ fmt(row.end_at) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="220">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openEdit(row)"><AppEmoji name="edit" size="sm" decorative />编辑</el-button>
+                <el-button v-if="row.status !== 'published'" link type="success" @click="publish(row)"
+                  ><AppEmoji name="publish" size="sm" decorative />发布</el-button
+                >
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+        <div class="page-list-pager">
+          <el-pagination
+            background
+            layout="prev, pager, next"
+            :total="total"
+            :page-size="limit"
+            @current-change="(p: number) => { page = p; load(); }"
+          />
+        </div>
       </div>
-    </div>
     </el-card>
 
-    <el-dialog v-model="dlg" :title="form.id ? '编辑场次' : '新建场次'" width="520px">
-      <el-form label-width="100px">
-        <el-form-item label="试卷ID"><el-input-number v-model="form.paper_id" :min="1" style="width: 100%" /></el-form-item>
-        <el-form-item label="标题"><el-input v-model="form.title" /></el-form-item>
+    <el-dialog v-model="dlg" :title="form.id ? '编辑场次' : '新建场次'" width="560px">
+      <el-form label-width="110px">
+        <el-form-item label="场次编码" required>
+          <el-input v-model="form.session_code" placeholder="全系统唯一" :disabled="!!form.id" />
+        </el-form-item>
+        <el-form-item label="所属企业" required>
+          <el-select
+            v-model="form.enterprise_id"
+            placeholder="选择企业"
+            filterable
+            style="width: 100%"
+            @change="onEnterpriseChange"
+          >
+            <el-option v-for="e in enterpriseOpts" :key="e.id" :label="e.name" :value="e.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="课程" required>
+          <el-select
+            v-model="form.course_id"
+            placeholder="选择课程"
+            filterable
+            style="width: 100%"
+            :disabled="!form.enterprise_id"
+            @change="onCourseChange"
+          >
+            <el-option v-for="c in courseOpts" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="试卷" required>
+          <el-select
+            v-model="form.paper_id"
+            placeholder="选择试卷"
+            filterable
+            style="width: 100%"
+            :disabled="!form.course_id"
+          >
+            <el-option v-for="p in paperOpts" :key="p.id" :label="paperOptLabel(p)" :value="p.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="标题" required><el-input v-model="form.title" /></el-form-item>
         <el-form-item label="开始时间">
           <el-date-picker v-model="form.start_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss.SSSZ" style="width: 100%" />
         </el-form-item>
@@ -64,16 +107,31 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
+import { apiErrorMessage } from "@/api/http";
 import { listSessions, createSession, updateSession, publishSession } from "@/api/sessions";
+import { listEnterprises } from "@/api/enterprises";
+import { listCourses } from "@/api/courses";
+import { listPapers } from "@/api/papers";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
 
 const rows = ref<Record<string, unknown>[]>([]);
 const total = ref(0);
 const page = ref(1);
 const limit = ref(20);
 const dlg = ref(false);
+
+const enterpriseOpts = ref<{ id: number; name: string }[]>([]);
+const courseOpts = ref<{ id: number; name: string }[]>([]);
+const paperOpts = ref<{ id: number; title: string; course_id?: number | null }[]>([]);
+
 const form = reactive({
   id: 0,
-  paper_id: 1,
+  session_code: "",
+  enterprise_id: null as number | null,
+  course_id: null as number | null,
+  paper_id: null as number | null,
   title: "",
   start_at: "" as string | undefined,
   end_at: "" as string | undefined,
@@ -84,56 +142,134 @@ function fmt(v: unknown) {
   return String(v).replace("T", " ").slice(0, 19);
 }
 
-async function load() {
-  const skip = (page.value - 1) * limit.value;
-  const { data } = await listSessions({ skip, limit: limit.value });
-  total.value = data.total;
-  rows.value = data.items;
+function paperOptLabel(p: { id: number; title: string }) {
+  return `${p.title}（#${p.id}）`;
 }
 
-function openCreate() {
+async function loadEnterpriseOptions() {
+  const { data } = await listEnterprises({ skip: 0, limit: 500 });
+  enterpriseOpts.value = (data.items || []).map((x: { id: number; name: string }) => ({ id: x.id, name: x.name }));
+}
+
+async function loadCoursesForEnterprise(eid: number | null) {
+  courseOpts.value = [];
+  if (!eid) return;
+  const { data } = await listCourses({ skip: 0, limit: 500, enterprise_id: eid });
+  courseOpts.value = (data.items || []).map((x: { id: number; name: string }) => ({ id: x.id, name: x.name }));
+}
+
+async function loadPapersForCourse(cid: number | null) {
+  paperOpts.value = [];
+  if (!cid) return;
+  const { data } = await listPapers({ skip: 0, limit: 200, course_id: cid });
+  paperOpts.value = (data.items || []).map((x: { id: number; title: string; course_id?: number | null }) => ({
+    id: x.id,
+    title: x.title,
+    course_id: x.course_id,
+  }));
+}
+
+async function onEnterpriseChange() {
+  form.course_id = null;
+  form.paper_id = null;
+  await loadCoursesForEnterprise(form.enterprise_id);
+}
+
+async function onCourseChange() {
+  form.paper_id = null;
+  await loadPapersForCourse(form.course_id);
+}
+
+async function load() {
+  try {
+    const skip = (page.value - 1) * limit.value;
+    const { data } = await listSessions({ skip, limit: limit.value });
+    total.value = data.total;
+    rows.value = data.items;
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "加载场次失败"));
+  }
+}
+
+async function openCreate() {
   form.id = 0;
-  form.paper_id = 1;
+  form.session_code = "";
   form.title = "";
   form.start_at = undefined;
   form.end_at = undefined;
+  const defEnt = auth.me?.enterprise_id ?? enterpriseOpts.value[0]?.id ?? null;
+  form.enterprise_id = defEnt;
+  form.course_id = null;
+  form.paper_id = null;
+  if (defEnt) await loadCoursesForEnterprise(defEnt);
+  else courseOpts.value = [];
+  paperOpts.value = [];
   dlg.value = true;
 }
 
-function openEdit(row: Record<string, unknown>) {
+async function openEdit(row: Record<string, unknown>) {
   form.id = row.id as number;
-  form.paper_id = row.paper_id as number;
-  form.title = row.title as string;
+  form.session_code = (row.session_code as string) || "";
+  form.title = (row.title as string) || "";
   form.start_at = row.start_at as string | undefined;
   form.end_at = row.end_at as string | undefined;
+  form.enterprise_id = (row.enterprise_id as number) || null;
+  form.course_id = (row.course_id as number) || null;
+  form.paper_id = (row.paper_id as number) || null;
+  if (form.enterprise_id) await loadCoursesForEnterprise(form.enterprise_id);
+  if (form.course_id) await loadPapersForCourse(form.course_id);
   dlg.value = true;
 }
 
 async function save() {
-  const body = {
+  const code = (form.session_code || "").trim();
+  if (!code || !form.title.trim() || !form.enterprise_id || !form.course_id || !form.paper_id) {
+    ElMessage.warning("请填写场次编码、企业、课程、试卷与标题");
+    return;
+  }
+  const body: Record<string, unknown> = {
+    session_code: code,
+    enterprise_id: form.enterprise_id,
+    course_id: form.course_id,
     paper_id: form.paper_id,
-    title: form.title,
+    title: form.title.trim(),
     start_at: form.start_at || null,
     end_at: form.end_at || null,
   };
   try {
     if (!form.id) await createSession(body);
-    else await updateSession(form.id, body);
+    else
+      await updateSession(form.id, {
+        session_code: code,
+        enterprise_id: form.enterprise_id,
+        course_id: form.course_id,
+        paper_id: form.paper_id,
+        title: form.title.trim(),
+        start_at: form.start_at || null,
+        end_at: form.end_at || null,
+      });
     ElMessage.success("已保存");
     dlg.value = false;
     await load();
-  } catch {
-    ElMessage.error("保存失败");
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "保存失败"));
   }
 }
 
 async function publish(row: Record<string, unknown>) {
-  await publishSession(row.id as number);
-  ElMessage.success("已发布");
-  await load();
+  try {
+    await publishSession(row.id as number);
+    ElMessage.success("已发布");
+    await load();
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "发布失败"));
+  }
 }
 
-onMounted(load);
+onMounted(async () => {
+  await loadEnterpriseOptions();
+  await load();
+});
 </script>
 
 <style scoped>

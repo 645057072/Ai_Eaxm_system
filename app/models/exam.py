@@ -12,6 +12,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.course import Course
+    from app.models.enterprise import Enterprise
     from app.models.paper_level import PaperLevel
     from app.models.user import User
     from app.models.question import Question
@@ -77,6 +78,9 @@ class ExamSession(Base):
     __tablename__ = "exam_session"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_code: Mapped[str] = mapped_column(String(64), unique=True, index=True, comment="场次编码")
+    enterprise_id: Mapped[int] = mapped_column(ForeignKey("sys_enterprise.id"), index=True, comment="所属企业")
+    course_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sys_course.id"), index=True, nullable=True, comment="关联课程")
     paper_id: Mapped[int] = mapped_column(ForeignKey("exam_paper.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(200))
     start_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
@@ -90,6 +94,8 @@ class ExamSession(Base):
     )
 
     paper: Mapped["ExamPaper"] = relationship(back_populates="sessions")
+    enterprise: Mapped["Enterprise"] = relationship("Enterprise", foreign_keys=[enterprise_id])
+    course: Mapped[Optional["Course"]] = relationship("Course", foreign_keys=[course_id])
     creator: Mapped[Optional["User"]] = relationship(
         back_populates="sessions_created", foreign_keys=[created_by]
     )
