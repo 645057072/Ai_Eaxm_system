@@ -8,15 +8,17 @@
         <el-input
           v-model="filterEnterpriseKw"
           clearable
-          placeholder="所属企业"
-          style="width: 150px"
+          placeholder="企业名称"
+          style="width: 170px"
+          title="按企业名称模糊查询，结果限定在当前登录用户数据权限内的企业"
           @keyup.enter="doSearch"
         />
         <el-input
           v-model="filterCourseKw"
           clearable
-          placeholder="课程"
-          style="width: 130px"
+          placeholder="课程名称"
+          style="width: 150px"
+          title="按课程名称模糊查询，结果限定在当前登录用户数据权限内的课程"
           @keyup.enter="doSearch"
         />
         <el-button type="primary" @click="doSearch">查询</el-button>
@@ -65,13 +67,22 @@
             <el-table-column label="结束" width="170">
               <template #default="{ row }">{{ fmt(row.end_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="260" fixed="right">
+            <el-table-column label="操作" width="300" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+                <el-button link type="primary" :disabled="!isDraftSession(row)" @click="openEdit(row)">编辑</el-button>
                 <template v-if="auth.can('action.session.manage')">
-                  <el-button v-if="row.status !== 'published'" link type="success" @click="publish(row)">发布</el-button>
+                  <el-tooltip
+                    v-if="row.status !== 'published'"
+                    :disabled="canPublishSession(row)"
+                    content="仅在考试开放时间内可发布，请先设置开始与结束时间"
+                    placement="top"
+                  >
+                    <span class="op-inline">
+                      <el-button link type="success" :disabled="!canPublishSession(row)" @click="publish(row)">发布</el-button>
+                    </span>
+                  </el-tooltip>
                   <el-button v-if="row.status === 'published'" link type="warning" @click="unpublish(row)">反发布</el-button>
-                  <el-button link type="danger" @click="removeOne(row)">删除</el-button>
+                  <el-button link type="danger" :disabled="!isDraftSession(row)" @click="removeOne(row)">删除</el-button>
                 </template>
               </template>
             </el-table-column>
@@ -214,6 +225,24 @@ function publishBadgeType(status: string): "success" | "info" {
   return status === "published" ? "success" : "info";
 }
 
+/** 仅草稿可改、可删（与后端一致） */
+function isDraftSession(row: Record<string, unknown>) {
+  return row.status === "draft";
+}
+
+/** 与后端一致：仅草稿且在开始与结束时间之间可发布 */
+function canPublishSession(row: Record<string, unknown>) {
+  if (row.status !== "draft") return false;
+  const start = row.start_at;
+  const end = row.end_at;
+  if (!start || !end) return false;
+  const t = Date.now();
+  const s = new Date(String(start)).getTime();
+  const e = new Date(String(end)).getTime();
+  if (Number.isNaN(s) || Number.isNaN(e)) return false;
+  return t >= s && t <= e;
+}
+
 function paperOptLabel(p: { id: number; title: string; paper_no?: string | null }) {
   const no = p.paper_no != null && String(p.paper_no).trim() !== "" ? String(p.paper_no) : `#${p.id}`;
   return `${p.title}（${no}）`;
@@ -298,6 +327,10 @@ async function openCreate() {
 }
 
 async function openEdit(row: Record<string, unknown>) {
+  if (row.status !== "draft") {
+    ElMessage.warning("仅草稿场次可编辑");
+    return;
+  }
   form.id = row.id as number;
   form.session_code = (row.session_code as string) || "";
   form.title = (row.title as string) || "";
@@ -351,6 +384,10 @@ async function save() {
 }
 
 async function publish(row: Record<string, unknown>) {
+  if (!canPublishSession(row)) {
+    ElMessage.warning("仅在考试开放时间内可发布，请先设置开始与结束时间");
+    return;
+  }
   try {
     await publishSession(row.id as number);
     ElMessage.success("已发布");
@@ -371,6 +408,10 @@ async function unpublish(row: Record<string, unknown>) {
 }
 
 async function removeOne(row: Record<string, unknown>) {
+  if (row.status !== "draft") {
+    ElMessage.warning("仅草稿场次可删除");
+    return;
+  }
   try {
     await ElMessageBox.confirm(`确定删除场次「${row.title}」？`, "删除确认", { type: "warning" });
   } catch {
@@ -389,9 +430,9 @@ async function onBatchCommand(cmd: string) {
   const sel = selectedRows.value;
   if (!sel.length) return;
   if (cmd === "publish") {
-    const targets = sel.filter((r) => r.status !== "published");
+    const targets = sel.filter((r) => canPublishSession(r));
     if (!targets.length) {
-      ElMessage.info("所选行均已发布");
+      ElMessage.info("所选行中没有可在当前时段发布的草稿场次（须为草稿且处于考试开放时间内）");
       return;
     }
     try {
@@ -423,13 +464,18 @@ async function onBatchCommand(cmd: string) {
     return;
   }
   if (cmd === "delete") {
+    const targets = sel.filter((r) => r.status === "draft");
+    if (!targets.length) {
+      ElMessage.info("所选中没有可删除的草稿场次");
+      return;
+    }
     try {
-      await ElMessageBox.confirm(`确定删除选中的 ${sel.length} 条场次？`, "批量删除", { type: "warning" });
+      await ElMessageBox.confirm(`确定删除选中的 ${targets.length} 条草稿场次？`, "批量删除", { type: "warning" });
     } catch {
       return;
     }
     try {
-      for (const r of sel) {
+      for (const r of targets) {
         await deleteSession(r.id as number);
       }
       ElMessage.success("已删除");
@@ -459,5 +505,9 @@ onMounted(async () => {
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+}
+.op-inline {
+  display: inline-flex;
+  vertical-align: middle;
 }
 </style>

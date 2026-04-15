@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, false, func, select
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.api.deps import get_db, require_any_permission, require_permission
@@ -24,6 +24,7 @@ from app.services.data_scope import (
     assert_paper_in_enterprise,
     assert_session_in_enterprise,
     ensure_in_managed_enterprise_scope,
+    get_managed_enterprise_ids,
     session_list_tenant_filter,
 )
 
@@ -90,6 +91,15 @@ def _session_to_out(s: ExamSession) -> ExamSessionOut:
         updated_at=s.updated_at,
         paper=None,
     )
+
+
+def _assert_publish_within_exam_window(s: ExamSession) -> None:
+    """场次发布仅在考试开放时间内允许（开始前、结束后均不可发布）。"""
+    if s.start_at is None or s.end_at is None:
+        raise HTTPException(status_code=400, detail="请先设置考试开始与结束时间后再发布")
+    now = _now()
+    if not (s.start_at <= now <= s.end_at):
+        raise HTTPException(status_code=400, detail="仅在考试开放时间内允许发布场次")
 
 
 def _assert_paper_valid_for_session(db: Session, paper_id: int) -> None:
@@ -162,8 +172,12 @@ def list_sessions(
     status: str | None = None,
     enterprise_id: int | None = Query(default=None, ge=1, description="按所属企业筛选"),
     course_id: int | None = Query(default=None, ge=1, description="按关联课程筛选"),
-    enterprise_keyword: str | None = Query(default=None, description="所属企业名称模糊查询"),
-    course_keyword: str | None = Query(default=None, description="课程名称模糊查询"),
+    enterprise_keyword: str | None = Query(
+        default=None, description="所属企业名称模糊查询（非超管限定在当前用户可管理企业范围内）"
+    ),
+    course_keyword: str | None = Query(
+        default=None, description="课程名称模糊查询（非超管限定在当前用户可管理企业下的课程）"
+    ),
 ) -> PageResult[ExamSessionOut]:
     """本企业场次列表。"""
     PaperCreator = aliased(User)
@@ -189,14 +203,28 @@ def list_sessions(
         stmt = stmt.where(ExamSession.course_id == course_id)
     if enterprise_keyword and enterprise_keyword.strip():
         kw = f"%{enterprise_keyword.strip()}%"
-        stmt = stmt.join(Enterprise, ExamSession.enterprise_id == Enterprise.id).where(
-            Enterprise.name.ilike(kw)
-        )
+        stmt = stmt.join(Enterprise, ExamSession.enterprise_id == Enterprise.id)
+        if not is_super_role(current):
+            managed = get_managed_enterprise_ids(db, current)
+            if not managed:
+                stmt = stmt.where(false())
+            else:
+                stmt = stmt.where(and_(Enterprise.name.ilike(kw), Enterprise.id.in_(managed)))
+        else:
+            stmt = stmt.where(Enterprise.name.ilike(kw))
     if course_keyword and course_keyword.strip():
         kw = f"%{course_keyword.strip()}%"
-        stmt = stmt.join(SessionCourse, ExamSession.course_id == SessionCourse.id).where(
-            SessionCourse.name.ilike(kw)
-        )
+        stmt = stmt.join(SessionCourse, ExamSession.course_id == SessionCourse.id)
+        if not is_super_role(current):
+            managed = get_managed_enterprise_ids(db, current)
+            if not managed:
+                stmt = stmt.where(false())
+            else:
+                stmt = stmt.where(
+                    and_(SessionCourse.name.ilike(kw), SessionCourse.enterprise_id.in_(managed))
+                )
+        else:
+            stmt = stmt.where(SessionCourse.name.ilike(kw))
     total = db.scalar(stmt) or 0
     q = (
         select(ExamSession)
@@ -214,10 +242,28 @@ def list_sessions(
         q = q.where(ExamSession.course_id == course_id)
     if enterprise_keyword and enterprise_keyword.strip():
         kw = f"%{enterprise_keyword.strip()}%"
-        q = q.join(Enterprise, ExamSession.enterprise_id == Enterprise.id).where(Enterprise.name.ilike(kw))
+        q = q.join(Enterprise, ExamSession.enterprise_id == Enterprise.id)
+        if not is_super_role(current):
+            managed = get_managed_enterprise_ids(db, current)
+            if not managed:
+                q = q.where(false())
+            else:
+                q = q.where(and_(Enterprise.name.ilike(kw), Enterprise.id.in_(managed)))
+        else:
+            q = q.where(Enterprise.name.ilike(kw))
     if course_keyword and course_keyword.strip():
         kw = f"%{course_keyword.strip()}%"
-        q = q.join(SessionCourse, ExamSession.course_id == SessionCourse.id).where(SessionCourse.name.ilike(kw))
+        q = q.join(SessionCourse, ExamSession.course_id == SessionCourse.id)
+        if not is_super_role(current):
+            managed = get_managed_enterprise_ids(db, current)
+            if not managed:
+                q = q.where(false())
+            else:
+                q = q.where(
+                    and_(SessionCourse.name.ilike(kw), SessionCourse.enterprise_id.in_(managed))
+                )
+        else:
+            q = q.where(SessionCourse.name.ilike(kw))
     rows = db.scalars(
         q.options(
             joinedload(ExamSession.enterprise),
@@ -319,6 +365,8 @@ def update_session(
     current: Annotated[User, Depends(require_permission("action.session.manage"))],
 ) -> ExamSessionOut:
     s = assert_session_in_enterprise(db, current, session_id)
+    if s.status != "draft":
+        raise HTTPException(status_code=400, detail="仅草稿场次可修改")
     data = body.model_dump(exclude_unset=True)
     if "session_code" in data and data["session_code"] is not None:
         sc = data["session_code"].strip()
@@ -363,7 +411,10 @@ def publish_session(
 ) -> ExamSessionOut:
     """发布场次。"""
     s = assert_session_in_enterprise(db, current, session_id)
+    if s.status == "published":
+        raise HTTPException(status_code=400, detail="场次已发布")
     _assert_paper_valid_for_session(db, s.paper_id)
+    _assert_publish_within_exam_window(s)
     s.status = "published"
     db.commit()
     db.refresh(s)
@@ -412,6 +463,8 @@ def delete_session(
 ) -> None:
     """删除场次（级联删除作答记录）。"""
     s = assert_session_in_enterprise(db, current, session_id)
+    if s.status != "draft":
+        raise HTTPException(status_code=400, detail="仅草稿场次可删除")
     db.delete(s)
     db.commit()
 
@@ -434,8 +487,12 @@ def get_take_data(
     now = _now()
     if s.status != "published":
         raise HTTPException(status_code=400, detail="考试未发布")
-    if s.start_at is None or s.end_at is None or not (s.start_at <= now <= s.end_at):
-        raise HTTPException(status_code=400, detail="不在考试时间范围内")
+    if s.start_at is None or s.end_at is None:
+        raise HTTPException(status_code=400, detail="考试时间未设置，无法进入考试")
+    if now < s.start_at:
+        raise HTTPException(status_code=400, detail="考试尚未开始，无法进入考试")
+    if now > s.end_at:
+        raise HTTPException(status_code=400, detail="考试已结束，无法进入考试")
     paper = s.paper
     if paper is None:
         raise HTTPException(status_code=400, detail="试卷缺失")
@@ -478,8 +535,12 @@ def start_attempt(
     now = _now()
     if s.status != "published":
         raise HTTPException(status_code=400, detail="考试未发布")
-    if s.start_at is None or s.end_at is None or not (s.start_at <= now <= s.end_at):
-        raise HTTPException(status_code=400, detail="不在考试时间范围内")
+    if s.start_at is None or s.end_at is None:
+        raise HTTPException(status_code=400, detail="考试时间未设置，无法进入考试")
+    if now < s.start_at:
+        raise HTTPException(status_code=400, detail="考试尚未开始，无法进入考试")
+    if now > s.end_at:
+        raise HTTPException(status_code=400, detail="考试已结束，无法进入考试")
     existing = db.scalars(
         select(ExamAttempt)
         .options(joinedload(ExamAttempt.session).joinedload(ExamSession.paper))
