@@ -19,5 +19,6 @@ class TakeDataOut(BaseModel):
     session_id: int
     title: str
     paper_id: int
+    paper_type: str = "formal"
     duration_minutes: int
     questions: List[TakeQuestionItem] = Field(default_factory=list)

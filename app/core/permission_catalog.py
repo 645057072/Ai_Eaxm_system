@@ -101,6 +101,8 @@ CATALOG: List[CatalogItem] = [
     {"code": "field.paper.level_id", "name": "试卷等级", "label": "字段-试卷", "kind": "field"},
     {"code": "field.paper.description", "name": "说明", "label": "字段-试卷", "kind": "field"},
     {"code": "field.paper.duration_minutes", "name": "时长(分钟)", "label": "字段-试卷", "kind": "field"},
+    {"code": "field.paper.pass_rate", "name": "及格率", "label": "字段-试卷", "kind": "field"},
+    {"code": "field.paper.pass_score", "name": "及格分", "label": "字段-试卷", "kind": "field"},
     {"code": "field.paper.rules", "name": "组卷规则", "label": "字段-试卷", "kind": "field"},
     {"code": "field.student.student_no", "name": "学员编号", "label": "字段-学员", "kind": "field"},
     {"code": "field.student.full_name", "name": "姓名", "label": "字段-学员", "kind": "field"},

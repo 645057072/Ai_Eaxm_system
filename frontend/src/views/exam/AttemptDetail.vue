@@ -6,16 +6,23 @@
         <el-button @click="$router.back()"><AppEmoji name="back" size="sm" decorative />返回</el-button>
       </div>
     </template>
-    <p v-if="att">状态：{{ att.status }}，总分：{{ att.total_score ?? "-" }}</p>
-    <el-table v-if="att" :data="att.answers || []">
-      <el-table-column prop="question_id" label="题目ID" width="90" />
-      <el-table-column label="得分" width="90">
-        <template #default="{ row }">{{ row.score_awarded ?? "-" }}</template>
-      </el-table-column>
-      <el-table-column label="作答">
-        <template #default="{ row }">{{ JSON.stringify(row.user_answer_json) }}</template>
-      </el-table-column>
-    </el-table>
+    <template v-if="att">
+      <p class="meta-line">状态：{{ att.status }}，总分：{{ att.total_score ?? "-" }}</p>
+      <div v-if="att.practice_report" class="report-wrap">
+        <h3 class="report-title">练习报告</h3>
+        <pre class="practice-report">{{ att.practice_report }}</pre>
+        <p class="report-hint">（报告篇幅按约一页 A4、宋体五号控制，可打印本页）</p>
+      </div>
+      <el-table :data="att.answers || []">
+        <el-table-column prop="question_id" label="题目ID" width="90" />
+        <el-table-column label="得分" width="90">
+          <template #default="{ row }">{{ row.score_awarded ?? "-" }}</template>
+        </el-table-column>
+        <el-table-column label="作答">
+          <template #default="{ row }">{{ JSON.stringify(row.user_answer_json) }}</template>
+        </el-table-column>
+      </el-table>
+    </template>
   </el-card>
 </template>
 
@@ -50,5 +57,34 @@ onMounted(load);
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.meta-line {
+  margin: 0 0 12px;
+}
+.report-wrap {
+  margin-bottom: 16px;
+}
+.report-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.practice-report {
+  font-family: "SimSun", "Songti SC", "STSong", serif;
+  font-size: 10.5pt;
+  line-height: 1.45;
+  max-height: 280mm;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  padding: 12px 14px;
+  background: #fafafa;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+.report-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #64748b;
 }
 </style>

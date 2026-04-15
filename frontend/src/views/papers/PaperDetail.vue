@@ -14,9 +14,23 @@
           }}；等级：{{ paper?.level_name || "—" }}
         </p>
         <p class="meta meta-second">
-          时长：{{ paper?.duration_minutes }} 分钟，总分：{{ formatScore(paper?.total_score) }}（小题分值合计）；状态：{{
+          时长：{{ paper?.duration_minutes }} 分钟；总分：{{ formatScore(paper?.total_score) }}（小题分值合计）；状态：{{
             auditStatusLabel(paper?.audit_status as string | undefined)
           }}；创建日期：{{ fmtPaperDate(paper?.issue_date) }}；有效期至：{{ fmtPaperDate(paper?.valid_until) }}
+        </p>
+        <p class="meta meta-pass">
+          <span>及格率(%)：</span>
+          <el-input-number
+            v-model="passRateEdit"
+            :min="0"
+            :max="100"
+            :precision="2"
+            :step="1"
+            size="small"
+            style="width: 130px"
+          />
+          <span class="pass-hint">及格分(合格分)：{{ formatScore(previewPassScore) }}（总分×及格率÷100）</span>
+          <el-button class="pass-save" size="small" type="primary" @click="savePassRate">保存及格率</el-button>
         </p>
         <p v-if="paperReviewed" class="meta meta-lock">已审核试卷不可修改组卷，仅可查看。</p>
       </div>
@@ -122,13 +136,22 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
 import { apiErrorMessage } from "@/api/http";
-import { getPaper, addPaperItem, removePaperItem } from "@/api/papers";
+import { getPaper, addPaperItem, removePaperItem, updatePaper } from "@/api/papers";
 import { listQuestions } from "@/api/questions";
 
 const route = useRoute();
 const id = Number(route.params.id);
 const loading = ref(false);
 const paper = ref<Record<string, unknown> | null>(null);
+
+/** 与后端联动：修改后点「保存及格率」写入试卷 */
+const passRateEdit = ref(60);
+const previewPassScore = computed(() => {
+  const t = Number(paper.value?.total_score);
+  const r = Number(passRateEdit.value);
+  if (!Number.isFinite(t) || !Number.isFinite(r)) return 0;
+  return Math.round(((t * r) / 100) * 100) / 100;
+});
 
 const paperReviewed = computed(() => (paper.value?.audit_status as string | undefined) === "reviewed");
 const addQid = ref(1);
@@ -331,10 +354,22 @@ async function refresh() {
   try {
     const { data } = await getPaper(id);
     paper.value = data as Record<string, unknown>;
+    const pr = (data as { pass_rate?: unknown }).pass_rate;
+    passRateEdit.value = pr != null && pr !== "" ? Number(pr) : 60;
     syncNextSortOrder();
     await loadPool();
   } finally {
     loading.value = false;
+  }
+}
+
+async function savePassRate() {
+  try {
+    await updatePaper(id, { pass_rate: passRateEdit.value });
+    ElMessage.success("已保存及格率");
+    await refresh();
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "保存失败"));
   }
 }
 
@@ -453,6 +488,21 @@ onMounted(refresh);
 }
 .meta-second {
   margin-bottom: 10px;
+}
+.meta-pass {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.pass-hint {
+  margin-left: 4px;
+  color: #64748b;
+  font-size: 13px;
+}
+.pass-save {
+  margin-left: 4px;
 }
 .meta-lock {
   margin: 0 0 8px;

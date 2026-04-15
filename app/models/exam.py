@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, List, Optional
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, JSON, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, JSON, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -33,6 +33,12 @@ class ExamPaper(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     duration_minutes: Mapped[int] = mapped_column(Integer, default=60, comment="考试时长分钟")
     total_score: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("100.00"))
+    pass_rate: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), default=Decimal("60.00"), comment="及格率(%)，合格分=总分×及格率/100"
+    )
+    pass_score: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), default=Decimal("0.00"), comment="及格分(合格分)，由总分与及格率自动计算"
+    )
     audit_status: Mapped[str] = mapped_column(
         String(16), default="draft", index=True, comment="审核状态：draft 草稿，reviewed 已审核"
     )
@@ -126,6 +132,10 @@ class ExamAttempt(Base):
     submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # in_progress / submitted / timeout
     status: Mapped[str] = mapped_column(String(16), default="in_progress", index=True)
+    staged: Mapped[bool] = mapped_column(
+        Boolean, default=False, comment="练习卷暂存标记：再次进入时提示是否继续作答"
+    )
+    practice_report: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="练习卷交卷报告")
     total_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
 
     session: Mapped["ExamSession"] = relationship(back_populates="attempts")

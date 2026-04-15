@@ -128,6 +128,13 @@ def _gen_paper_no(db: Session, enterprise_id: int | None) -> str:
     return f"{prefix}{n + 1:04d}"
 
 
+def _recalc_pass_score(paper: ExamPaper) -> None:
+    """及格分(合格分) = 总分 × 及格率 / 100，保留两位小数。"""
+    rate = paper.pass_rate if paper.pass_rate is not None else Decimal("60")
+    total = paper.total_score if paper.total_score is not None else Decimal("0")
+    paper.pass_score = (total * rate / Decimal("100")).quantize(Decimal("0.01"))
+
+
 def _recalc_total_score(db: Session, paper_id: int) -> None:
     s = db.scalar(
         select(func.coalesce(func.sum(ExamPaperItem.score), 0)).where(ExamPaperItem.paper_id == paper_id)
@@ -135,6 +142,7 @@ def _recalc_total_score(db: Session, paper_id: int) -> None:
     paper = db.get(ExamPaper, paper_id)
     if paper:
         paper.total_score = Decimal(str(s or 0))
+        _recalc_pass_score(paper)
         db.add(paper)
 
 
@@ -222,6 +230,8 @@ def _paper_summary(
 ) -> PaperSummary:
     eid, ename = _enterprise_for_paper(p)
     ts = item_score_total if item_score_total is not None else p.total_score
+    pr = getattr(p, "pass_rate", None) or Decimal("60")
+    ps = (ts * pr / Decimal("100")).quantize(Decimal("0.01"))
     idate = getattr(p, "issue_date", None)
     vuntil = getattr(p, "valid_until", None)
     return PaperSummary(
@@ -238,6 +248,8 @@ def _paper_summary(
         description=p.description,
         duration_minutes=p.duration_minutes,
         total_score=ts,
+        pass_rate=pr,
+        pass_score=ps,
         item_count=item_count,
         session_ref_count=session_ref_count,
         audit_status=getattr(p, "audit_status", None) or "draft",
@@ -398,6 +410,8 @@ def create_papers_batch(
             description=body.description,
             duration_minutes=body.duration_minutes,
             total_score=Decimal("0"),
+            pass_rate=body.pass_rate,
+            pass_score=Decimal("0"),
             issue_date=body.issue_date,
             valid_until=body.valid_until,
             created_by=current.id,
@@ -499,6 +513,8 @@ def create_paper(
         description=body.description,
         duration_minutes=body.duration_minutes,
         total_score=Decimal("0"),
+        pass_rate=body.pass_rate,
+        pass_score=Decimal("0"),
         issue_date=body.issue_date,
         valid_until=body.valid_until,
         created_by=current.id,
@@ -538,6 +554,8 @@ def _build_paper_out(p: ExamPaper) -> PaperOut:
             )
         )
     agg = sum((it.score for it in items_sorted), Decimal("0"))
+    pr = getattr(p, "pass_rate", None) or Decimal("60")
+    pss = (agg * pr / Decimal("100")).quantize(Decimal("0.01"))
     return PaperOut(
         id=p.id,
         title=p.title,
@@ -551,6 +569,8 @@ def _build_paper_out(p: ExamPaper) -> PaperOut:
         description=p.description,
         duration_minutes=p.duration_minutes,
         total_score=agg,
+        pass_rate=pr,
+        pass_score=pss,
         audit_status=getattr(p, "audit_status", None) or "draft",
         issue_date=getattr(p, "issue_date", None),
         valid_until=getattr(p, "valid_until", None),

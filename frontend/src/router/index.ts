@@ -76,7 +76,7 @@ const router = createRouter({
           path: "exam/available",
           name: "exam-available",
           component: () => import("@/views/exam/AvailableExams.vue"),
-          meta: { permission: "menu.exam.available", title: "考试管理" },
+          meta: { permission: "menu.exam.available", title: "在线考试" },
         },
         {
           path: "exam/candidate-manage",

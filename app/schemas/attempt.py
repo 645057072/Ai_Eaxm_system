@@ -33,6 +33,8 @@ class ExamAttemptOut(BaseModel):
     started_at: datetime
     submitted_at: Optional[datetime] = None
     status: str
+    staged: bool = False
+    practice_report: Optional[str] = Field(None, description="练习卷交卷后的文字报告")
     total_score: Optional[Decimal] = None
     answers: List[ExamAnswerOut] = []
 
@@ -46,3 +48,5 @@ class AttemptStartOut(BaseModel):
     duration_minutes: int
     started_at: datetime
     status: Optional[str] = None  # in_progress / submitted
+    paper_type: str = "formal"
+    staged: bool = False

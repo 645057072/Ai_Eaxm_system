@@ -41,6 +41,8 @@ class PaperSummary(BaseModel):
     description: Optional[str] = None
     duration_minutes: int
     total_score: Decimal
+    pass_rate: Decimal = Field(Decimal("60"), description="及格率(%)")
+    pass_score: Decimal = Field(Decimal("0"), description="及格分(合格分)，总分×及格率/100")
     item_count: int = Field(0, description="已组卷题目数量，大于0表示已组卷")
     session_ref_count: int = Field(0, description="引用该试卷的考试场次数量")
     audit_status: str = Field("draft", description="draft 草稿，reviewed 已审核")
@@ -61,6 +63,7 @@ class PaperCreate(BaseModel):
     level_id: Optional[int] = None
     description: Optional[str] = None
     duration_minutes: int = Field(60, ge=1, le=600)
+    pass_rate: Decimal = Field(Decimal("60"), ge=0, le=100, description="及格率(%)，及格分由总分自动计算")
     issue_date: Optional[date] = Field(None, description="创建/签发日期")
     valid_until: Optional[date] = Field(None, description="有效期至（含当日仍有效；次日不可发布引用）")
     rules: List[PaperCompositionRule] = Field(default_factory=list, description="按题型抽题；空则仅创建空卷")
@@ -80,6 +83,7 @@ class PaperUpdate(BaseModel):
     level_id: Optional[int] = None
     description: Optional[str] = None
     duration_minutes: Optional[int] = Field(None, ge=1, le=600)
+    pass_rate: Optional[Decimal] = Field(None, ge=0, le=100, description="及格率(%)")
     issue_date: Optional[date] = None
     valid_until: Optional[date] = None
 
@@ -114,6 +118,8 @@ class PaperOut(BaseModel):
     description: Optional[str] = None
     duration_minutes: int
     total_score: Decimal
+    pass_rate: Decimal = Field(Decimal("60"), description="及格率(%)")
+    pass_score: Decimal = Field(Decimal("0"), description="及格分(合格分)")
     audit_status: str = "draft"
     issue_date: Optional[date] = None
     valid_until: Optional[date] = None
@@ -153,6 +159,7 @@ class PaperBatchCreate(BaseModel):
     level_id: Optional[int] = None
     description: Optional[str] = None
     duration_minutes: int = Field(60, ge=1, le=600)
+    pass_rate: Decimal = Field(Decimal("60"), ge=0, le=100, description="各套试卷统一的及格率(%)")
     rules: List[PaperBatchRule] = Field(..., min_length=1)
     auto_split: int = Field(1, ge=1)
     score_per: Decimal = Field(Decimal("1"), ge=0)

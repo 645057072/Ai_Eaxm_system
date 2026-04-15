@@ -112,6 +112,7 @@ def _session_to_out(s: ExamSession) -> ExamSessionOut:
     paper_no = s.paper.paper_no if s.paper is not None else None
     paper_title = s.paper.title if s.paper is not None else None
     paper_type = s.paper.paper_type if s.paper is not None else None
+    paper_duration = s.paper.duration_minutes if s.paper is not None else None
     return ExamSessionOut(
         id=s.id,
         session_code=s.session_code,
@@ -123,6 +124,7 @@ def _session_to_out(s: ExamSession) -> ExamSessionOut:
         paper_no=paper_no,
         paper_title=paper_title,
         paper_type=paper_type,
+        paper_duration_minutes=paper_duration,
         attempt_limit=s.attempt_limit,
         title=s.title,
         start_at=s.start_at,
@@ -171,6 +173,8 @@ def list_available_for_student(
     db: Annotated[Session, Depends(get_db)],
     current: Annotated[User, Depends(require_permission("menu.exam.available"))],
     page: Annotated[PageParams, Depends()],
+    paper_title_keyword: str | None = Query(default=None, description="试卷标题模糊查询"),
+    course_keyword: str | None = Query(default=None, description="课程名称模糊查询"),
 ) -> PageResult[ExamSessionOut]:
     """考生可见的本企业场次。"""
     now = _now()
@@ -186,20 +190,27 @@ def list_available_for_student(
         if current.enterprise_id is None:
             return PageResult[ExamSessionOut](total=0, items=[])
         conds.append(ExamSession.enterprise_id == current.enterprise_id)
-    total = (
-        db.scalar(
-            select(func.count())
-            .select_from(ExamSession)
-            .join(ExamPaper, ExamSession.paper_id == ExamPaper.id)
-            .where(*conds)
-        )
-        or 0
-    )
+
+    SessionCourse = aliased(Course)
+
+    def _apply_available_filters(q):
+        q = q.where(*conds)
+        pt = (paper_title_keyword or "").strip()
+        if pt:
+            q = q.where(ExamPaper.title.ilike(f"%{pt}%"))
+        ck = (course_keyword or "").strip()
+        if ck:
+            q = q.join(SessionCourse, ExamSession.course_id == SessionCourse.id).where(
+                SessionCourse.name.ilike(f"%{ck}%")
+            )
+        return q
+
+    cnt_base = select(func.count()).select_from(ExamSession).join(ExamPaper, ExamSession.paper_id == ExamPaper.id)
+    total = db.scalar(_apply_available_filters(cnt_base)) or 0
+    data_q = select(ExamSession).join(ExamPaper, ExamSession.paper_id == ExamPaper.id)
     rows = db.scalars(
-        select(ExamSession)
-        .join(ExamPaper, ExamSession.paper_id == ExamPaper.id)
+        _apply_available_filters(data_q)
         .options(*_session_out_load_options())
-        .where(*conds)
         .order_by(ExamSession.id.desc())
         .offset(page.skip)
         .limit(page.limit)
@@ -579,6 +590,7 @@ def get_take_data(
         session_id=s.id,
         title=s.title,
         paper_id=paper.id,
+        paper_type=paper.paper_type or "formal",
         duration_minutes=paper.duration_minutes,
         questions=items,
     )
@@ -618,6 +630,11 @@ def start_attempt(
     ).first()
     if existing:
         dur = existing.session.paper.duration_minutes if existing.session and existing.session.paper else 60
+        ptype = (
+            (existing.session.paper.paper_type or "formal")
+            if existing.session and existing.session.paper
+            else "formal"
+        )
         return AttemptStartOut(
             attempt_id=existing.id,
             session_id=s.id,
@@ -625,6 +642,8 @@ def start_attempt(
             duration_minutes=dur,
             started_at=existing.started_at,
             status=existing.status,
+            paper_type=ptype,
+            staged=bool(getattr(existing, "staged", False)),
         )
     lim = s.attempt_limit
     if lim is not None and lim >= 1:
@@ -644,6 +663,7 @@ def start_attempt(
     db.commit()
     db.refresh(att)
     dur = s.paper.duration_minutes if s.paper else 60
+    ptype = (s.paper.paper_type or "formal") if s.paper else "formal"
     return AttemptStartOut(
         attempt_id=att.id,
         session_id=s.id,
@@ -651,4 +671,6 @@ def start_attempt(
         duration_minutes=dur,
         started_at=att.started_at,
         status=att.status,
+        paper_type=ptype,
+        staged=False,
     )

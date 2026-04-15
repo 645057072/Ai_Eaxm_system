@@ -79,6 +79,12 @@
       <el-table-column label="总分" width="90">
         <template #default="{ row }">{{ formatScore(row.total_score) }}</template>
       </el-table-column>
+      <el-table-column label="及格率%" width="88" align="center">
+        <template #default="{ row }">{{ formatScore(row.pass_rate) }}</template>
+      </el-table-column>
+      <el-table-column label="及格分" width="88" align="center">
+        <template #default="{ row }">{{ formatScore(row.pass_score) }}</template>
+      </el-table-column>
       <el-table-column label="题量" width="72" align="center">
         <template #default="{ row }">{{ paperItemCount(row) }}</template>
       </el-table-column>
@@ -188,6 +194,10 @@
         </el-form-item>
         <el-form-item label="时长(分)">
           <el-input-number v-model="form.duration_minutes" :min="1" :max="600" />
+        </el-form-item>
+        <el-form-item label="及格率(%)">
+          <el-input-number v-model="form.pass_rate" :min="0" :max="100" :precision="2" :step="1" style="width: 200px" />
+          <span class="hint">及格分(合格分)=总分×及格率÷100，保存后按小题合计总分自动计算</span>
         </el-form-item>
         <el-form-item label="创建日期">
           <el-date-picker
@@ -393,6 +403,7 @@ const form = reactive({
   level_id: undefined as number | undefined,
   description: "",
   duration_minutes: 60,
+  pass_rate: 60,
   issue_date: null as string | null,
   valid_until: null as string | null,
 });
@@ -564,6 +575,7 @@ function openCreate() {
   form.level_id = undefined;
   form.description = "";
   form.duration_minutes = 60;
+  form.pass_rate = 60;
   form.issue_date = todayISO();
   form.valid_until = null;
   batchForm.base_title = "";
@@ -626,6 +638,7 @@ async function saveCreate() {
     course_id: form.course_id,
     paper_type: form.paper_type,
     duration_minutes: form.duration_minutes,
+    pass_rate: form.pass_rate,
     description: form.description.trim() || null,
     rules: rulesPayload,
   };
@@ -673,6 +686,7 @@ async function saveBatch() {
       level_id: form.level_id || null,
       description: form.description.trim() || null,
       duration_minutes: form.duration_minutes,
+      pass_rate: form.pass_rate,
       rules,
       auto_split: batchForm.auto_split,
       score_per: batchForm.score_per,

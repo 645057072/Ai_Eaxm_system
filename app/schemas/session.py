@@ -57,6 +57,7 @@ class ExamSessionOut(BaseModel):
     paper_no: Optional[str] = Field(None, description="试卷编号")
     paper_title: Optional[str] = Field(None, description="试卷档案中的试卷名称")
     paper_type: Optional[str] = Field(None, description="试卷类型 formal|mock|practice")
+    paper_duration_minutes: Optional[int] = Field(None, description="考试时长(分钟)，取自试卷")
     attempt_limit: Optional[int] = Field(None, description="答题次数上限，空为不限制")
     title: str
     start_at: Optional[datetime] = None

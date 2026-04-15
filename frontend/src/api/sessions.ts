@@ -24,8 +24,10 @@ export function deleteSession(id: number) {
   return http.delete(`/v1/exam-sessions/${id}`);
 }
 
-export function listAvailable() {
-  return http.get("/v1/exam-sessions/available/list", { params: { skip: 0, limit: 100 } });
+export function listAvailable(params?: Record<string, unknown>) {
+  return http.get("/v1/exam-sessions/available/list", {
+    params: { skip: 0, limit: 100, ...params },
+  });
 }
 
 export function getTakeData(sessionId: number) {
