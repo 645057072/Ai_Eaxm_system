@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     # 营业执照等附件存储目录（相对工作目录）；环境变量 UPLOAD_ROOT
     upload_root: str = "uploads"
 
+    # 题库导入：LLM 解析增强（OpenAI 兼容接口）
+    llm_enabled: bool = False
+    llm_api_base: str = ""
+    llm_api_key: str = ""
+    llm_model: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

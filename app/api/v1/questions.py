@@ -43,6 +43,8 @@ from app.services.question_import import (
     build_questions_from_uploaded_texts,
     extract_plain_text,
 )
+from app.services.llm_question_import import llm_parse_questions_from_text
+from app.core.config import get_settings
 
 router = APIRouter()
 
@@ -363,10 +365,22 @@ async def import_questions(
                 text_sources.append((fn, text))
         merge_logs: list[str] = []
         if text_sources:
-            try:
-                parsed_items, merge_logs = build_questions_from_uploaded_texts(text_sources)
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=f"题目文本合并失败：{e!s}") from e
+            # 若启用 LLM，则直接用 LLM 解析每份文本文件（不走规则推断）
+            if get_settings().llm_enabled:
+                parsed_items = []
+                merge_logs = []
+                for _fn, _txt in text_sources:
+                    try:
+                        items_one, logs_one = llm_parse_questions_from_text(_txt)
+                    except Exception as e:
+                        raise HTTPException(status_code=400, detail=f"LLM 解析失败：{e!s}") from e
+                    parsed_items.extend(items_one)
+                    merge_logs.extend(logs_one)
+            else:
+                try:
+                    parsed_items, merge_logs = build_questions_from_uploaded_texts(text_sources)
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=f"题目文本合并失败：{e!s}") from e
         else:
             parsed_items = []
         items = [*image_items, *parsed_items]
@@ -390,7 +404,7 @@ async def import_questions(
             stem = (it.get("stem") or "").strip()
             q_type = it.get("q_type") or "single"
             opts = it.get("options_json")
-            ans = it["answer_json"] if it.get("answer_json") is not None else {"choice": "A"}
+            ans = it["answer_json"] if it.get("answer_json") is not None else "A"
             an = it.get("analysis")
             if not stem:
                 failed += 1

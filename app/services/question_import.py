@@ -346,31 +346,31 @@ def _split_answer_analysis(text: str) -> Tuple[str, Optional[str], Optional[str]
 
 
 def _parse_answer_to_json(ans: Optional[str], q_type: str) -> Any:
-    """根据文本答案生成 answer_json。"""
+    """根据文本答案生成 answer_json（与阅卷一致：single->str, multiple->list[str], judge->bool, fill->str）。"""
     if not ans or not str(ans).strip():
         if q_type == "multiple":
-            return {"choices": ["A"]}
+            return ["A"]
         if q_type == "judge":
-            return {"choice": "T"}
+            return True
         if q_type == "fill":
-            return {"text": ""}
-        return {"choice": "A"}
+            return ""
+        return "A"
     s = _clean_answer_raw(str(ans))
     if q_type == "multiple":
         keys = re.findall(r"[A-E]", s.upper())
-        return {"choices": keys if keys else ["A"]}
+        return keys if keys else ["A"]
     if q_type == "judge":
         if any(x in s for x in ("错", "误", "否", "×")) or s in ("错误", "不正确", "F"):
-            return {"choice": "F"}
+            return False
         if any(x in s for x in ("对", "是", "正确", "√", "T", "真")):
-            return {"choice": "T"}
-        return {"choice": "T"}
+            return True
+        return True
     if q_type == "fill":
-        return {"text": s}
+        return s
     m = re.match(r"^([A-Ea-e])", s)
     if m:
-        return {"choice": m.group(1).upper()}
-    return {"choice": "A"}
+        return m.group(1).upper()
+    return "A"
 
 
 def _parse_option_lines(lines: List[str]) -> Tuple[List[Dict[str, str]], List[str]]:
