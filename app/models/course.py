@@ -11,6 +11,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.enterprise import Enterprise
+    from app.models.print_template import PrintTemplate
     from app.models.question import Question
     from app.models.user import User
 
@@ -32,4 +33,9 @@ class Course(Base):
     enterprise: Mapped["Enterprise"] = relationship("Enterprise", back_populates="courses")
     questions: Mapped[List["Question"]] = relationship("Question", back_populates="course")
     creator: Mapped[Optional["User"]] = relationship("User", back_populates="courses_created")
+    print_templates: Mapped[List["PrintTemplate"]] = relationship(
+        "PrintTemplate",
+        back_populates="course",
+        foreign_keys="PrintTemplate.course_id",
+    )
 

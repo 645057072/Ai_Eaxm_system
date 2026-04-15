@@ -11,6 +11,7 @@ from app.api.v1 import (
     files,
     papers,
     paper_levels,
+    print_templates,
     permissions,
     questions,
     roles,
@@ -29,6 +30,7 @@ api_router.include_router(users.router, prefix="/users", tags=["用户管理"])
 api_router.include_router(questions.router, prefix="/questions", tags=["题库"])
 api_router.include_router(papers.router, prefix="/papers", tags=["试卷"])
 api_router.include_router(paper_levels.router, prefix="/paper-levels", tags=["试卷等级"])
+api_router.include_router(print_templates.router, prefix="/print-templates", tags=["打印模板"])
 api_router.include_router(exam_sessions.router, prefix="/exam-sessions", tags=["考试场次"])
 api_router.include_router(attempts.router, tags=["考试作答"])
 api_router.include_router(students.router, prefix="/students", tags=["学员管理"])

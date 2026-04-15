@@ -135,8 +135,20 @@ const router = createRouter({
         {
           path: "system/print-settings",
           name: "system-print-settings",
-          component: () => import("@/views/placeholder/ModulePlaceholder.vue"),
-          meta: { permission: "menu.system.print", title: "打印设置" },
+          component: () => import("@/views/system/PrintSettingsList.vue"),
+          meta: {
+            permission: ["menu.system.print", "list.print_template"],
+            title: "打印设置",
+          },
+        },
+        {
+          path: "system/print-template/:id/design",
+          name: "print-template-design",
+          component: () => import("@/views/system/PrintTemplateDesign.vue"),
+          meta: {
+            permission: ["menu.system.print", "action.print_template.manage"],
+            title: "模板设计",
+          },
         },
         {
           path: "system/online-users",

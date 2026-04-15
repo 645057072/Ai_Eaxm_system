@@ -69,6 +69,13 @@ export const useAuthStore = defineStore("auth", () => {
         perms.includes("action.session.manage"))
     )
       return true;
+    if (
+      code.startsWith("field.print_template.") &&
+      (perms.includes("form.print_template") ||
+        perms.includes("list.print_template") ||
+        perms.includes("action.print_template.manage"))
+    )
+      return true;
     return false;
   }
 

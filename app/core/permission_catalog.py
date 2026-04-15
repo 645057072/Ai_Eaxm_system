@@ -37,6 +37,9 @@ CATALOG: List[CatalogItem] = [
     {"code": "menu.system.settings", "name": "设置中心", "label": "系统管理", "kind": "menu"},
     {"code": "menu.system.document", "name": "单据设计", "label": "系统管理-设置中心", "kind": "menu"},
     {"code": "menu.system.print", "name": "打印设置", "label": "系统管理-设置中心", "kind": "menu"},
+    {"code": "list.print_template", "name": "打印模板列表", "label": "系统管理-设置中心", "kind": "list"},
+    {"code": "form.print_template", "name": "打印模板表单", "label": "系统管理-设置中心", "kind": "form"},
+    {"code": "action.print_template.manage", "name": "打印模板维护", "label": "系统管理-设置中心", "kind": "action"},
     {"code": "menu.system.supervision", "name": "监管服务", "label": "系统管理", "kind": "menu"},
     {"code": "menu.system.online", "name": "在线用户", "label": "系统管理-监管服务", "kind": "menu"},
     {"code": "menu.system.logs", "name": "日志管理", "label": "系统管理-监管服务", "kind": "menu"},
@@ -297,12 +300,14 @@ _MODULE_RULES: List[Tuple[str, str, str]] = [
     ("list.enterprise", "sys", "系统管理"),
     ("list.course", "sys", "系统管理"),
     ("list.paper_level", "sys", "系统管理"),
+    ("list.print_template", "sys", "系统管理"),
     ("list.student", "sys", "系统管理"),
     ("form.user", "sys", "系统管理"),
     ("form.role", "sys", "系统管理"),
     ("form.enterprise", "sys", "系统管理"),
     ("form.course", "sys", "系统管理"),
     ("form.student", "sys", "系统管理"),
+    ("form.print_template", "sys", "系统管理"),
     ("field.user.", "sys", "系统管理"),
     ("field.enterprise.", "sys", "系统管理"),
     ("field.course.", "sys", "系统管理"),
@@ -313,6 +318,7 @@ _MODULE_RULES: List[Tuple[str, str, str]] = [
     ("action.course.", "sys", "系统管理"),
     ("action.paper_level.", "sys", "系统管理"),
     ("action.student.", "sys", "系统管理"),
+    ("action.print_template.", "sys", "系统管理"),
 ]
 
 _FUNCTION_MODULE_ORDER = (

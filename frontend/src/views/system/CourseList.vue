@@ -37,12 +37,18 @@
         <template #default="{ row }">{{ fmtTime(row.created_at) }}</template>
       </el-table-column>
       <el-table-column
-        v-if="auth.canAny('action.course.update', 'action.course.delete')"
+        v-if="auth.canAny('action.course.update', 'action.course.delete', 'menu.system.print', 'list.print_template')"
         label="操作"
-        width="180"
+        width="260"
         fixed="right"
       >
         <template #default="{ row }">
+          <el-button
+            v-if="auth.canAny('menu.system.print', 'list.print_template')"
+            link
+            type="primary"
+            @click="goPrintTemplates(row)"
+          >打印模板</el-button>
           <el-button v-if="auth.can('action.course.update')" link type="primary" @click="openEdit(row)"
             ><AppEmoji name="edit" size="sm" decorative />编辑</el-button
           >
@@ -106,6 +112,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiErrorMessage } from "@/api/http";
 import { listEnterprises } from "@/api/enterprises";
@@ -113,6 +120,11 @@ import { listCourses, createCourse, patchCourse, deleteCourse } from "@/api/cour
 import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
+const router = useRouter();
+
+function goPrintTemplates(row: Record<string, unknown>) {
+  router.push({ path: "/system/print-settings", query: { course_id: String(row.id) } });
+}
 
 const rows = ref<Record<string, unknown>[]>([]);
 const total = ref(0);
