@@ -751,3 +751,122 @@ def build_image_placeholder(filename: str) -> Dict[str, Any]:
             "analysis": None,
         }
     )
+
+
+def build_questions_from_excel_table(filename: str, raw: bytes) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """按 Excel 表格列解析题库。
+
+    支持表头（任意顺序）：
+    - 题型/q_type
+    - 题干/stem
+    - A/B/C/D/E（或 选项A/选项B...）
+    - 答案/标准答案/answer
+    - 解析/analysis
+    """
+    ext = Path(filename).suffix.lower()
+    rows: List[List[Any]] = []
+    if ext == ".xlsx":
+        import openpyxl
+
+        wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        ws = wb.active
+        for r in ws.iter_rows(values_only=True):
+            rows.append(list(r))
+    elif ext == ".xls":
+        import xlrd
+
+        book = xlrd.open_workbook(file_contents=raw)
+        sh = book.sheet_by_index(0)
+        for r in range(sh.nrows):
+            rows.append([sh.cell_value(r, c) for c in range(sh.ncols)])
+    else:
+        return [], []
+
+    def s(v: Any) -> str:
+        return "" if v is None else str(v).strip()
+
+    # 找到表头行：包含“题干/题目/题型/答案/选项A”等任一关键字
+    header_idx = None
+    for i, r in enumerate(rows[:10]):
+        joined = " ".join(s(x) for x in r if s(x))
+        if any(k in joined for k in ("题干", "题目", "题型", "答案", "标准答案", "选项A", "A", "B")):
+            header_idx = i
+            break
+    if header_idx is None:
+        return [], [f"[Excel] {filename}：未识别到表头，已回退到文本解析"]
+
+    hdr = [s(x) for x in rows[header_idx]]
+    idx_map: dict[str, int] = {}
+    for j, name in enumerate(hdr):
+        if not name:
+            continue
+        idx_map[name] = j
+
+    def find_col(keys: tuple[str, ...]) -> Optional[int]:
+        for k in keys:
+            for name, j in idx_map.items():
+                if name == k or k in name:
+                    return j
+        return None
+
+    col_qt = find_col(("题型", "q_type", "类型"))
+    col_stem = find_col(("题干", "题目", "stem"))
+    col_ans = find_col(("标准答案", "答案", "answer"))
+    col_an = find_col(("解析", "analysis"))
+    col_a = find_col(("A", "选项A"))
+    col_b = find_col(("B", "选项B"))
+    col_c = find_col(("C", "选项C"))
+    col_d = find_col(("D", "选项D"))
+    col_e = find_col(("E", "选项E"))
+
+    if col_stem is None:
+        return [], [f"[Excel] {filename}：表头缺少题干列，已回退到文本解析"]
+
+    def qtype_from_cell(v: str) -> str:
+        t = v.strip()
+        if "判断" in t:
+            return "judge"
+        if "多选" in t or "多项" in t:
+            return "multiple"
+        if "填空" in t:
+            return "fill"
+        if "单选" in t or "单项" in t:
+            return "single"
+        return ""
+
+    items: List[Dict[str, Any]] = []
+    for r in rows[header_idx + 1 :]:
+        stem = s(r[col_stem] if col_stem < len(r) else "")
+        if not stem:
+            continue
+        qt_raw = s(r[col_qt] if col_qt is not None and col_qt < len(r) else "")
+        qt = qtype_from_cell(qt_raw)
+
+        # 选项列（若存在 A/B）
+        opts: List[Dict[str, str]] = []
+        for key, col in (("A", col_a), ("B", col_b), ("C", col_c), ("D", col_d), ("E", col_e)):
+            if col is None:
+                continue
+            if col >= len(r):
+                continue
+            tv = s(r[col])
+            if tv:
+                opts.append({"key": key, "text": tv})
+
+        # 若题型未提供，按内容推断
+        if not qt:
+            hint = stem + "\n" + "\n".join([f"{o['key']}. {o['text']}" for o in opts])
+            qt = _infer_qtype(stem, opts, hint)
+
+        ans_raw = s(r[col_ans] if col_ans is not None and col_ans < len(r) else "")
+        analysis = s(r[col_an] if col_an is not None and col_an < len(r) else "")
+        item = {
+            "q_type": qt,
+            "stem": stem,
+            "options_json": opts if opts else None,
+            "answer_json": _parse_answer_to_json(ans_raw, qt),
+            "analysis": analysis or None,
+        }
+        items.append(finalize_import_item(item))
+
+    return items, [f"[Excel] {filename}：表格解析题目 {len(items)}"]

@@ -40,6 +40,7 @@ from app.services.question_number import allocate_question_no
 from app.services.question_dedup import compute_question_dedup_hash, find_duplicate_question_id
 from app.services.question_import import (
     build_image_placeholder,
+    build_questions_from_excel_table,
     build_questions_from_uploaded_texts,
     extract_plain_text,
 )
@@ -345,6 +346,14 @@ async def import_questions(
             if ext in image_ext:
                 image_items.append(build_image_placeholder(fn))
                 continue
+            if ext in ("xls", "xlsx") and not get_settings().llm_enabled:
+                excel_items, excel_logs = build_questions_from_excel_table(fn, raw)
+                if excel_items:
+                    parsed_items = []
+                    text_sources = []
+                    image_items.extend(excel_items)
+                    merge_logs.extend(excel_logs)
+                    continue
             try:
                 text = extract_plain_text(fn, raw)
             except ValueError as e:
