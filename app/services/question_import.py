@@ -753,74 +753,131 @@ def build_image_placeholder(filename: str) -> Dict[str, Any]:
     )
 
 
-def build_questions_from_excel_table(filename: str, raw: bytes) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """按 Excel 表格列解析题库。
+def _normalize_excel_header_cell(h: str) -> str:
+    """表头规范化：去必填标记、全角字母、空白，便于匹配「选项 A」与「选项A」。"""
+    t = (h or "").strip()
+    if not t:
+        return ""
+    for rm in ("（必填）", "(必填)", "（必填)", "（ 必填 ）"):
+        t = t.replace(rm, "")
+    t = t.strip()
+    trans = str.maketrans(
+        "ＡＢＣＤＥａｂｃｄｅ",
+        "ABCDEabcde",
+    )
+    t = t.translate(trans)
+    t = re.sub(r"\s+", "", t)
+    return t
 
-    支持表头（任意顺序）：
-    - 题型/q_type
-    - 题干/stem
-    - A/B/C/D/E（或 选项A/选项B...）
-    - 答案/标准答案/answer
-    - 解析/analysis
-    """
-    ext = Path(filename).suffix.lower()
-    rows: List[List[Any]] = []
-    if ext == ".xlsx":
-        import openpyxl
 
-        wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
-        ws = wb.active
-        for r in ws.iter_rows(values_only=True):
-            rows.append(list(r))
-    elif ext == ".xls":
-        import xlrd
+def _qtype_from_excel_sheet_title(title: str) -> Optional[str]:
+    """按工作表标签名确定题型（模板常见：单选题/多选题/判断题/填空题/问答题）。"""
+    t = (title or "").strip().replace(" ", "")
+    if not t:
+        return None
+    # 说明类工作表不参与导入
+    if any(x in t for x in ("说明", "格式", "目录", "封面", "注意事项", "模版", "模板")):
+        if "题" not in t:
+            return None
+    if "多选" in t:
+        return "multiple"
+    if "单选" in t:
+        return "single"
+    if "判断" in t:
+        return "judge"
+    if "填空" in t:
+        return "fill"
+    if "问答" in t or "简答" in t or "论述" in t:
+        # 系统题型仅有 fill承载主观文字作答
+        return "fill"
+    return None
 
-        book = xlrd.open_workbook(file_contents=raw)
-        sh = book.sheet_by_index(0)
-        for r in range(sh.nrows):
-            rows.append([sh.cell_value(r, c) for c in range(sh.ncols)])
-    else:
-        return [], []
+
+def _is_excel_noise_stem_row(stem: str) -> bool:
+    """跳过说明行、表头重复行等非题目内容（仅格内文本，浮动文本框不会被 openpyxl/xlrd 读入）。"""
+    s0 = (stem or "").strip()
+    if len(s0) < 2:
+        return True
+    norm = _normalize_excel_header_cell(s0)
+    if norm in ("题干", "题目", "选项A", "选项B", "正确答案", "答案", "解析"):
+        return True
+    if s0.startswith("试题导入") or "导入格式说明" in s0:
+        return True
+    if re.match(r"^[一二三四五六七八九十]+[、．.]\s*格式说明", s0):
+        return True
+    if "格式说明" in s0 and len(s0) < 80:
+        return True
+    return False
+
+
+def _find_col_by_normalized_header(norm_to_idx: dict[str, int], *candidates: str) -> Optional[int]:
+    """按规范化表头名查找列下标，candidates 按优先级从高到低。"""
+    for cand in candidates:
+        key = _normalize_excel_header_cell(cand)
+        if key and key in norm_to_idx:
+            return norm_to_idx[key]
+    return None
+
+
+def _parse_one_excel_sheet_table(
+    rows: List[List[Any]],
+    sheet_title: str,
+    filename: str,
+    sheet_label: str,
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """解析单个工作表上的题目表（已抽成矩阵行）。"""
 
     def s(v: Any) -> str:
         return "" if v is None else str(v).strip()
 
-    # 找到表头行：包含“题干/题目/题型/答案/选项A”等任一关键字
-    header_idx = None
-    for i, r in enumerate(rows[:10]):
+    header_idx: Optional[int] = None
+    search_cap = min(len(rows), 25)
+    for i in range(search_cap):
+        r = rows[i]
         joined = " ".join(s(x) for x in r if s(x))
-        if any(k in joined for k in ("题干", "题目", "题型", "答案", "标准答案", "选项A", "A", "B")):
+        if any(
+            k in joined
+            for k in (
+                "题干",
+                "题目",
+                "题型",
+                "正确答案",
+                "标准答案",
+                "答案",
+                "选项A",
+                "选项 A",
+                "选项B",
+            )
+        ):
             header_idx = i
             break
     if header_idx is None:
-        return [], [f"[Excel] {filename}：未识别到表头，已回退到文本解析"]
+        return [], [f"[Excel] {filename}「{sheet_label}」：未识别表头，已跳过"]
 
     hdr = [s(x) for x in rows[header_idx]]
-    idx_map: dict[str, int] = {}
+    norm_to_idx: dict[str, int] = {}
     for j, name in enumerate(hdr):
         if not name:
             continue
-        idx_map[name] = j
+        nk = _normalize_excel_header_cell(name)
+        if nk and nk not in norm_to_idx:
+            norm_to_idx[nk] = j
 
-    def find_col(keys: tuple[str, ...]) -> Optional[int]:
-        for k in keys:
-            for name, j in idx_map.items():
-                if name == k or k in name:
-                    return j
-        return None
-
-    col_qt = find_col(("题型", "q_type", "类型"))
-    col_stem = find_col(("题干", "题目", "stem"))
-    col_ans = find_col(("标准答案", "答案", "answer"))
-    col_an = find_col(("解析", "analysis"))
-    col_a = find_col(("A", "选项A"))
-    col_b = find_col(("B", "选项B"))
-    col_c = find_col(("C", "选项C"))
-    col_d = find_col(("D", "选项D"))
-    col_e = find_col(("E", "选项E"))
+    col_qt = _find_col_by_normalized_header(norm_to_idx, "题型", "q_type", "类型")
+    col_stem = _find_col_by_normalized_header(norm_to_idx, "题干", "题目", "stem", "试题题干")
+    col_ans = _find_col_by_normalized_header(norm_to_idx, "正确答案", "标准答案", "答案", "answer")
+    col_an = _find_col_by_normalized_header(norm_to_idx, "解析", "analysis", "试题解析")
+    # 选项列：优先「选项A」，避免仅用子串「A」误匹配其它列名
+    col_a = _find_col_by_normalized_header(norm_to_idx, "选项A", "A")
+    col_b = _find_col_by_normalized_header(norm_to_idx, "选项B", "B")
+    col_c = _find_col_by_normalized_header(norm_to_idx, "选项C", "C")
+    col_d = _find_col_by_normalized_header(norm_to_idx, "选项D", "D")
+    col_e = _find_col_by_normalized_header(norm_to_idx, "选项E", "E")
 
     if col_stem is None:
-        return [], [f"[Excel] {filename}：表头缺少题干列，已回退到文本解析"]
+        return [], [f"[Excel] {filename}「{sheet_label}」：缺少题干列，已跳过"]
+
+    sheet_qt = _qtype_from_excel_sheet_title(sheet_title)
 
     def qtype_from_cell(v: str) -> str:
         t = v.strip()
@@ -837,12 +894,11 @@ def build_questions_from_excel_table(filename: str, raw: bytes) -> Tuple[List[Di
     items: List[Dict[str, Any]] = []
     for r in rows[header_idx + 1 :]:
         stem = s(r[col_stem] if col_stem < len(r) else "")
-        if not stem:
+        if not stem or _is_excel_noise_stem_row(stem):
             continue
         qt_raw = s(r[col_qt] if col_qt is not None and col_qt < len(r) else "")
-        qt = qtype_from_cell(qt_raw)
+        qt_cell = qtype_from_cell(qt_raw)
 
-        # 选项列（若存在 A/B）
         opts: List[Dict[str, str]] = []
         for key, col in (("A", col_a), ("B", col_b), ("C", col_c), ("D", col_d), ("E", col_e)):
             if col is None:
@@ -853,20 +909,88 @@ def build_questions_from_excel_table(filename: str, raw: bytes) -> Tuple[List[Di
             if tv:
                 opts.append({"key": key, "text": tv})
 
-        # 若题型未提供，按内容推断
-        if not qt:
-            hint = stem + "\n" + "\n".join([f"{o['key']}. {o['text']}" for o in opts])
-            qt = _infer_qtype(stem, opts, hint)
-
         ans_raw = s(r[col_ans] if col_ans is not None and col_ans < len(r) else "")
+
+        # 题型：工作表标签优先，其次「题型」列，最后推断（有选项列时按答案字母个数区分单选/多选，避免题干括号被误判为填空）
+        if sheet_qt:
+            qt = sheet_qt
+        elif qt_cell:
+            qt = qt_cell
+        else:
+            hint = stem + "\n" + "\n".join([f"{o['key']}. {o['text']}" for o in opts])
+            if len(opts) >= 2:
+                qt = _qtype_hint_from_answer_key(ans_raw)
+            else:
+                qt = _infer_qtype(stem, opts, hint)
+
+        # 单选/多选应有选项；表标为判断且无选项时补默认
+        if qt in ("single", "multiple") and len(opts) < 2:
+            continue
+        if qt == "judge" and len(opts) < 2:
+            opts = [{"key": "T", "text": "正确"}, {"key": "F", "text": "错误"}]
+
         analysis = s(r[col_an] if col_an is not None and col_an < len(r) else "")
+
+        if qt in ("single", "multiple", "judge"):
+            opts_use: Any = opts if opts else _default_options_json_for_qtype(qt)
+        else:
+            opts_use = None
+
         item = {
             "q_type": qt,
             "stem": stem,
-            "options_json": opts if opts else None,
+            "options_json": opts_use,
             "answer_json": _parse_answer_to_json(ans_raw, qt),
             "analysis": analysis or None,
         }
         items.append(finalize_import_item(item))
 
-    return items, [f"[Excel] {filename}：表格解析题目 {len(items)}"]
+    return items, [f"[Excel] {filename}「{sheet_label}」：表格解析题目 {len(items)}"]
+
+
+def build_questions_from_excel_table(filename: str, raw: bytes) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """按 Excel 表格列解析题库。
+
+    - 遍历**全部工作表**；题型以**标签页名称**为准（单选题/多选题/判断题/填空题/问答题等）。
+    - 仅读取单元格区域，浮动说明框等不会作为单元格导入。
+    - 支持表头（任意顺序）：题型、题干、选项A～E、正确答案、解析 等。
+    """
+    ext = Path(filename).suffix.lower()
+    all_items: List[Dict[str, Any]] = []
+    logs: List[str] = []
+
+    def s(v: Any) -> str:
+        return "" if v is None else str(v).strip()
+
+    if ext == ".xlsx":
+        import openpyxl
+
+        wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            rows = [list(r) for r in ws.iter_rows(values_only=True)]
+            sheet_title = s(ws.title)
+            items, sheet_logs = _parse_one_excel_sheet_table(rows, sheet_title, filename, sheet_title)
+            all_items.extend(items)
+            logs.extend(sheet_logs)
+    elif ext == ".xls":
+        import xlrd
+
+        book = xlrd.open_workbook(file_contents=raw)
+        for si in range(book.nsheets):
+            sh = book.sheet_by_index(si)
+            rows = []
+            for r in range(sh.nrows):
+                rows.append([sh.cell_value(r, c) for c in range(sh.ncols)])
+            sheet_title = s(sh.name)
+            items, sheet_logs = _parse_one_excel_sheet_table(rows, sheet_title, filename, sheet_title)
+            all_items.extend(items)
+            logs.extend(sheet_logs)
+    else:
+        return [], []
+
+    if not all_items:
+        return [], logs + [f"[Excel] {filename}：各页均未解析到题目，已回退到文本解析"]
+
+    logs.append(f"[Excel] {filename}：合计表格解析题目 {len(all_items)}")
+    return all_items, logs
