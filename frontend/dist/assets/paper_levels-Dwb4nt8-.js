@@ -1,1 +1,0 @@
-import{G as r}from"./index-5q1_9hbJ.js";function a(e){return r.get("/v1/paper-levels",{params:e})}function l(e){return r.get(`/v1/paper-levels/${e}`)}function n(e){return r.post("/v1/paper-levels",e)}function v(e,t){return r.patch(`/v1/paper-levels/${e}`,t)}function s(e){return r.delete(`/v1/paper-levels/${e}`)}export{n as c,s as d,l as g,a as l,v as p};

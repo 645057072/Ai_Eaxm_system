@@ -603,7 +603,7 @@ def start_attempt(
     db: Annotated[Session, Depends(get_db)],
     current: Annotated[User, Depends(require_permission("action.exam.take"))],
 ) -> AttemptStartOut:
-    """开始考试，生成唯一作答记录。"""
+    """开始考试：按试卷类型限制作答次数。"""
     assert_session_in_enterprise(db, current, session_id)
     s = db.scalars(
         select(ExamSession).options(joinedload(ExamSession.paper)).where(ExamSession.id == session_id)
@@ -621,35 +621,36 @@ def start_attempt(
         raise HTTPException(status_code=400, detail="考试尚未开始，无法进入考试")
     if now > ea:
         raise HTTPException(status_code=400, detail="考试已结束，无法进入考试")
-    existing = db.scalars(
+    # 若存在未交卷作答，直接继续该次作答
+    existing_in_progress = db.scalars(
         select(ExamAttempt)
-        .options(joinedload(ExamAttempt.session).joinedload(ExamSession.paper))
         .where(
             ExamAttempt.session_id == session_id,
             ExamAttempt.user_id == current.id,
+            ExamAttempt.status == "in_progress",
         )
+        .order_by(ExamAttempt.id.desc())
+        .limit(1)
     ).first()
-    if existing:
-        dur = existing.session.paper.duration_minutes if existing.session and existing.session.paper else 60
-        ptype = (
-            (existing.session.paper.paper_type or "formal")
-            if existing.session and existing.session.paper
-            else "formal"
-        )
-        ensure_exam_candidate_for_session(db, s, current, existing.id)
+    if existing_in_progress:
+        dur = s.paper.duration_minutes if s.paper else 60
+        ptype = (s.paper.paper_type or "formal") if s.paper else "formal"
+        ensure_exam_candidate_for_session(db, s, current, existing_in_progress.id)
         db.commit()
         return AttemptStartOut(
-            attempt_id=existing.id,
+            attempt_id=existing_in_progress.id,
             session_id=s.id,
             paper_id=s.paper_id,
             duration_minutes=dur,
-            started_at=existing.started_at,
-            status=existing.status,
+            started_at=existing_in_progress.started_at,
+            status=existing_in_progress.status,
             paper_type=ptype,
-            staged=bool(getattr(existing, "staged", False)),
+            staged=bool(getattr(existing_in_progress, "staged", False)),
         )
-    lim = s.attempt_limit
-    if lim is not None and lim >= 1:
+
+    ptype = (s.paper.paper_type or "formal") if s.paper else "formal"
+    # 作答次数规则：practice 不限；mock 每日 5 次（不累计）；formal 1 次
+    if ptype == "formal":
         cnt = (
             db.scalar(
                 select(func.count()).select_from(ExamAttempt).where(
@@ -659,8 +660,27 @@ def start_attempt(
             )
             or 0
         )
-        if int(cnt) >= lim:
-            raise HTTPException(status_code=400, detail="已达本场考试答题次数上限")
+        if int(cnt) >= 1:
+            raise HTTPException(status_code=400, detail="正式考试仅允许作答 1 次")
+    elif ptype == "mock":
+        today = _now().date()
+        cnt = (
+            db.scalar(
+                select(func.count())
+                .select_from(ExamAttempt)
+                .where(
+                    ExamAttempt.session_id == session_id,
+                    ExamAttempt.user_id == current.id,
+                    func.date(ExamAttempt.started_at) == today,
+                )
+            )
+            or 0
+        )
+        if int(cnt) >= 5:
+            raise HTTPException(status_code=400, detail="模拟考试每日最多作答 5 次")
+    else:
+        # practice：不限制
+        pass
     att = ExamAttempt(session_id=session_id, user_id=current.id, status="in_progress")
     db.add(att)
     db.commit()
@@ -668,7 +688,6 @@ def start_attempt(
     ensure_exam_candidate_for_session(db, s, current, att.id)
     db.commit()
     dur = s.paper.duration_minutes if s.paper else 60
-    ptype = (s.paper.paper_type or "formal") if s.paper else "formal"
     return AttemptStartOut(
         attempt_id=att.id,
         session_id=s.id,

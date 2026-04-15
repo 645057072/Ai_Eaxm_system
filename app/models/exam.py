@@ -123,7 +123,7 @@ class ExamAttempt(Base):
     """考生某次考试作答实例。"""
 
     __tablename__ = "exam_attempt"
-    __table_args__ = (UniqueConstraint("session_id", "user_id", name="uq_session_user_attempt"),)
+    __table_args__ = ()
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     session_id: Mapped[int] = mapped_column(ForeignKey("exam_session.id", ondelete="CASCADE"), index=True)

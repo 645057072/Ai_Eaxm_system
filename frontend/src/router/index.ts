@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import { ElMessage } from "element-plus";
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -216,6 +217,16 @@ router.beforeEach(async (to) => {
     const codes = Array.isArray(perm) ? perm : [perm];
     if (!codes.some((c) => auth.can(c))) {
       return { name: "home" };
+    }
+  }
+  // 正式考试锁定：禁止离开答题页（允许跳转到答卷详情页）
+  const lock = localStorage.getItem("formal_exam_lock") || "";
+  if (lock) {
+    const isAttemptDetail = typeof to.path === "string" && /^\/attempts\/\d+$/.test(to.path);
+    const isTakeExam = typeof to.path === "string" && to.path.startsWith("/exam/take/");
+    if (!isAttemptDetail && !isTakeExam) {
+      ElMessage.warning("正式考试进行中，禁止离开答题页面");
+      return false;
     }
   }
   return true;

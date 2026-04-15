@@ -1,9 +1,14 @@
 <template>
-  <el-card v-loading="loading" class="take-exam-card">
+  <el-card v-loading="loading" class="take-exam-card" :class="{ obfuscate: obfuscate }">
     <template #header>
       <div class="exam-hdr">
         <div class="exam-hdr-title">{{ title }}</div>
         <div class="exam-hdr-actions">
+          <div v-if="durationMinutes" class="exam-timer">
+            <span class="timer-item">考试时间：{{ durationMinutes }} 分钟</span>
+            <span class="timer-sep">|</span>
+            <span class="timer-item">剩余：{{ fmtRemain(remainingSec) }}</span>
+          </div>
           <el-button v-if="isPractice" type="warning" :disabled="isSubmitting" @click="stageSave"
             ><AppEmoji name="save" size="sm" decorative />暂存</el-button
           >
@@ -20,10 +25,7 @@
     <div v-for="(q, qi) in questions" :key="q.question_id" class="block">
       <div class="qhead">
         <span class="qno">{{ qi + 1 }}.</span>
-        <span class="qstem">{{ q.stem }}</span>
-      </div>
-      <div class="qtype-center">
-        <span class="qtype-pill">{{ qTypeLabel(q.q_type) }}</span>
+        <span class="qstem">{{ q.stem }}（{{ qTypeLabel(q.q_type) }}）</span>
       </div>
       <template v-if="q.q_type === 'judge'">
         <el-radio-group v-model="answers[q.question_id]">
@@ -71,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { getTakeData, startExam } from "@/api/sessions";
@@ -97,8 +99,17 @@ const answers = reactive<Record<number, unknown>>({});
 const attemptId = ref(0);
 const submittedTip = ref("");
 const isSubmitting = ref(false);
+const durationMinutes = ref<number | null>(null);
+const startedAtIso = ref<string>("");
+const remainingSec = ref(0);
+let remainTimer: ReturnType<typeof setInterval> | null = null;
+const formalLocked = ref(false);
+const obfuscate = ref(false);
+let obfuscateTimer: ReturnType<typeof setTimeout> | null = null;
+let warnAt = 0;
 
 const isPractice = computed(() => paperType.value === "practice");
+const isFormal = computed(() => paperType.value === "formal");
 
 const countdownVisible = ref(false);
 const countdownSec = ref(10);
@@ -177,6 +188,118 @@ async function runSubmitCountdown() {
   submitCdVisible.value = false;
 }
 
+function fmtRemain(sec: number) {
+  const s = Math.max(0, Math.floor(sec));
+  const hh = String(Math.floor(s / 3600)).padStart(2, "0");
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
+}
+
+function updateRemaining() {
+  if (!durationMinutes.value || !startedAtIso.value) return;
+  const st = new Date(startedAtIso.value).getTime();
+  if (!Number.isFinite(st)) return;
+  const now = Date.now();
+  const used = Math.floor((now - st) / 1000);
+  remainingSec.value = Math.max(0, durationMinutes.value * 60 - used);
+}
+
+function setFormalLock(on: boolean) {
+  formalLocked.value = on;
+  if (on) localStorage.setItem("formal_exam_lock", String(attemptId.value || "1"));
+  else localStorage.removeItem("formal_exam_lock");
+}
+
+function bindFormalGuards() {
+  const warn = (msg: string) => {
+    const now = Date.now();
+    if (now - warnAt < 2500) return;
+    warnAt = now;
+    ElMessage.warning(msg);
+  };
+  const obf = () => {
+    obfuscate.value = true;
+    if (obfuscateTimer) window.clearTimeout(obfuscateTimer);
+    obfuscateTimer = window.setTimeout(() => {
+      obfuscate.value = false;
+      obfuscateTimer = null;
+    }, 2500);
+  };
+  const onVis = () => {
+    if (document.hidden) {
+      warn("正式考试进行中，请勿切换页面/页签");
+      obf();
+    }
+  };
+  const onFs = () => {
+    if (!document.fullscreenElement) {
+      warn("正式考试进行中，请保持全屏");
+      obf();
+    }
+  };
+  const onBlur = () => {
+    warn("正式考试进行中，请保持考试窗口在最前");
+    obf();
+  };
+  const onResize = () => {
+    if (window.innerHeight < 200 || window.innerWidth < 400) {
+      warn("正式考试进行中，请勿最小化或异常缩放窗口");
+      obf();
+    }
+  };
+  document.addEventListener("visibilitychange", onVis);
+  document.addEventListener("fullscreenchange", onFs);
+  window.addEventListener("blur", onBlur);
+  window.addEventListener("resize", onResize);
+  return () => {
+    document.removeEventListener("visibilitychange", onVis);
+    document.removeEventListener("fullscreenchange", onFs);
+    window.removeEventListener("blur", onBlur);
+    window.removeEventListener("resize", onResize);
+  };
+}
+
+let unbindFormal: (() => void) | null = null;
+let unbindCopyGuards: (() => void) | null = null;
+
+function bindNoCopyGuards() {
+  const warn = () => ElMessage.warning("考试中禁止复制题干内容");
+  const onCopy = (e: ClipboardEvent) => {
+    e.preventDefault();
+    warn();
+  };
+  const onCut = (e: ClipboardEvent) => {
+    e.preventDefault();
+    warn();
+  };
+  const onCtx = (e: MouseEvent) => {
+    const el = e.target as HTMLElement | null;
+    if (!el) return;
+    if (el.closest(".take-exam-card")) {
+      e.preventDefault();
+      warn();
+    }
+  };
+  const onKey = (e: KeyboardEvent) => {
+    const k = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && (k === "c" || k === "x" || k === "a")) {
+      e.preventDefault();
+      warn();
+    }
+  };
+  document.addEventListener("copy", onCopy);
+  document.addEventListener("cut", onCut);
+  document.addEventListener("contextmenu", onCtx);
+  window.addEventListener("keydown", onKey, true);
+  return () => {
+    document.removeEventListener("copy", onCopy);
+    document.removeEventListener("cut", onCut);
+    document.removeEventListener("contextmenu", onCtx);
+    window.removeEventListener("keydown", onKey, true);
+  };
+}
+
 async function boot() {
   loading.value = true;
   try {
@@ -193,12 +316,41 @@ async function boot() {
       attempt_id: number;
       status?: string;
       staged?: boolean;
+      started_at?: string;
+      duration_minutes?: number;
     };
     attemptId.value = st.attempt_id;
+    startedAtIso.value = String(st.started_at || "");
+    durationMinutes.value = typeof st.duration_minutes === "number" ? st.duration_minutes : null;
+    if (durationMinutes.value && startedAtIso.value) {
+      updateRemaining();
+      if (remainTimer) clearInterval(remainTimer);
+      remainTimer = setInterval(updateRemaining, 1000);
+    }
     if (st.status === "submitted") {
       submittedTip.value = "本场考试已交卷，将跳转到成绩页。";
       await router.replace("/attempts/" + st.attempt_id);
       return;
+    }
+
+    // 正式考试：锁定导航并要求全屏（尽量约束）
+    if (isFormal.value) {
+      setFormalLock(true);
+      try {
+        await document.documentElement.requestFullscreen();
+      } catch {
+        // 不做兜底
+      }
+      if (unbindFormal) unbindFormal();
+      unbindFormal = bindFormalGuards();
+      if (unbindCopyGuards) unbindCopyGuards();
+      unbindCopyGuards = bindNoCopyGuards();
+    } else {
+      setFormalLock(false);
+      if (unbindCopyGuards) {
+        unbindCopyGuards();
+        unbindCopyGuards = null;
+      }
     }
 
     if (paperType.value === "practice" && st.staged && st.status === "in_progress") {
@@ -250,6 +402,7 @@ async function submit() {
     await runSubmitCountdown();
     await submitAttempt(attemptId.value);
     ElMessage.success("交卷成功");
+    setFormalLock(false);
     await router.replace("/attempts/" + attemptId.value);
   } catch (e) {
     ElMessage.error("交卷失败，请重试");
@@ -260,11 +413,26 @@ async function submit() {
 }
 
 onMounted(boot);
+onUnmounted(() => {
+  if (remainTimer) clearInterval(remainTimer);
+  remainTimer = null;
+  if (unbindFormal) unbindFormal();
+  unbindFormal = null;
+  if (unbindCopyGuards) unbindCopyGuards();
+  unbindCopyGuards = null;
+  if (obfuscateTimer) window.clearTimeout(obfuscateTimer);
+  obfuscateTimer = null;
+  setFormalLock(false);
+});
 </script>
 
 <style scoped>
 .take-exam-card :deep(.el-card__header) {
   padding: 12px 16px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #fff;
 }
 .exam-hdr {
   display: flex;
@@ -294,6 +462,22 @@ onMounted(boot);
   align-items: center;
   z-index: 1;
 }
+.exam-timer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 6px;
+  font-size: 13px;
+  color: #334155;
+  padding: 0 10px;
+  height: 32px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 6px;
+}
+.timer-sep {
+  color: #94a3b8;
+}
 .block {
   margin-bottom: 20px;
   padding: 12px;
@@ -312,18 +496,14 @@ onMounted(boot);
 .qstem {
   white-space: pre-wrap;
 }
-.qtype-center {
-  text-align: center;
-  margin-bottom: 10px;
+.take-exam-card :deep(.qstem),
+.take-exam-card :deep(.block) {
+  -webkit-user-select: none;
+  user-select: none;
 }
-.qtype-pill {
-  display: inline-block;
-  padding: 2px 12px;
-  font-size: 13px;
-  color: #334155;
-  background: #f1f5f9;
-  border-radius: 999px;
-  border: 1px solid #e2e8f0;
+.take-exam-card.obfuscate :deep(.qstem) {
+  filter: blur(5px);
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.7);
 }
 .tip {
   color: #e6a23c;

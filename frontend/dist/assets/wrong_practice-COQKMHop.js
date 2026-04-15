@@ -1,1 +1,0 @@
-import{G as r}from"./index-5q1_9hbJ.js";function o(t){return r.get("/v1/wrong-practice",{params:t})}function s(t){return r.get(`/v1/wrong-practice/${t}/next`)}function i(t,n){return r.post(`/v1/wrong-practice/${t}/submit`,n)}export{s as g,o as l,i as s};
