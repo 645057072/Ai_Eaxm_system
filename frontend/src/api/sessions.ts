@@ -16,6 +16,14 @@ export function publishSession(id: number) {
   return http.post(`/v1/exam-sessions/${id}/publish`);
 }
 
+export function unpublishSession(id: number) {
+  return http.post(`/v1/exam-sessions/${id}/unpublish`);
+}
+
+export function deleteSession(id: number) {
+  return http.delete(`/v1/exam-sessions/${id}`);
+}
+
 export function listAvailable() {
   return http.get("/v1/exam-sessions/available/list", { params: { skip: 0, limit: 100 } });
 }

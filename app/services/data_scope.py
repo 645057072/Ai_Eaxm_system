@@ -168,14 +168,21 @@ def assert_session_in_enterprise(db: Session, current: User, session_id: int) ->
     return s
 
 
-def session_list_tenant_filter(PaperCreator: Any, db: Session, current: User) -> Any:
+def session_list_tenant_filter(
+    PaperCreator: Any,
+    db: Session,
+    current: User,
+    *,
+    scope_course: Any | None = None,
+) -> Any:
     """考试场次列表：课程企业或仅按创建者企业归属的试卷，限定在可管理企业集合内。"""
+    course_ent = scope_course if scope_course is not None else Course
     if is_super_role(current):
         return None
     managed = get_managed_enterprise_ids(db, current)
     if not managed:
         return false()
     return or_(
-        Course.enterprise_id.in_(managed),
+        course_ent.enterprise_id.in_(managed),
         and_(ExamPaper.course_id.is_(None), PaperCreator.enterprise_id.in_(managed)),
     )
