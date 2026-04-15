@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, false, func, select
+from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.api.deps import get_db, require_any_permission, require_permission
@@ -97,8 +97,21 @@ def _validate_session_business(
         raise HTTPException(status_code=400, detail="所选课程与试卷已关联课程不一致")
 
 
+def _resolve_attempt_limit_for_paper(paper: ExamPaper, raw: int | None) -> int | None:
+    """练习卷不限制；模拟/正式默认 1 次，可手工调大。"""
+    if paper.paper_type == "practice":
+        return None
+    if raw is None:
+        return 1
+    if raw < 1:
+        raise HTTPException(status_code=400, detail="次数限制至少为 1")
+    return raw
+
+
 def _session_to_out(s: ExamSession) -> ExamSessionOut:
     paper_no = s.paper.paper_no if s.paper is not None else None
+    paper_title = s.paper.title if s.paper is not None else None
+    paper_type = s.paper.paper_type if s.paper is not None else None
     return ExamSessionOut(
         id=s.id,
         session_code=s.session_code,
@@ -108,6 +121,9 @@ def _session_to_out(s: ExamSession) -> ExamSessionOut:
         course_name=s.course.name if s.course else None,
         paper_id=s.paper_id,
         paper_no=paper_no,
+        paper_title=paper_title,
+        paper_type=paper_type,
+        attempt_limit=s.attempt_limit,
         title=s.title,
         start_at=s.start_at,
         end_at=s.end_at,
@@ -194,11 +210,16 @@ def list_available_for_student(
 @router.get("", response_model=PageResult[ExamSessionOut])
 def list_sessions(
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_permission("list.session"))],
+    current: Annotated[
+        User, Depends(require_any_permission("list.session", "menu.exam.paper_publish"))
+    ],
     page: Annotated[PageParams, Depends()],
     status: str | None = None,
     enterprise_id: int | None = Query(default=None, ge=1, description="按所属企业筛选"),
     course_id: int | None = Query(default=None, ge=1, description="按关联课程筛选"),
+    title_keyword: str | None = Query(
+        default=None, description="场次标题或试卷名称模糊查询",
+    ),
     enterprise_keyword: str | None = Query(
         default=None, description="所属企业名称模糊查询（非超管限定在当前用户可管理企业范围内）"
     ),
@@ -228,6 +249,9 @@ def list_sessions(
         stmt = stmt.where(ExamSession.enterprise_id == enterprise_id)
     if course_id is not None:
         stmt = stmt.where(ExamSession.course_id == course_id)
+    if title_keyword and title_keyword.strip():
+        kw = f"%{title_keyword.strip()}%"
+        stmt = stmt.where(or_(ExamSession.title.ilike(kw), ExamPaper.title.ilike(kw)))
     if enterprise_keyword and enterprise_keyword.strip():
         kw = f"%{enterprise_keyword.strip()}%"
         stmt = stmt.join(Enterprise, ExamSession.enterprise_id == Enterprise.id)
@@ -267,6 +291,9 @@ def list_sessions(
         q = q.where(ExamSession.enterprise_id == enterprise_id)
     if course_id is not None:
         q = q.where(ExamSession.course_id == course_id)
+    if title_keyword and title_keyword.strip():
+        kw = f"%{title_keyword.strip()}%"
+        q = q.where(or_(ExamSession.title.ilike(kw), ExamPaper.title.ilike(kw)))
     if enterprise_keyword and enterprise_keyword.strip():
         kw = f"%{enterprise_keyword.strip()}%"
         q = q.join(Enterprise, ExamSession.enterprise_id == Enterprise.id)
@@ -304,7 +331,9 @@ def list_sessions(
 def create_session(
     body: ExamSessionCreate,
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_permission("action.session.manage"))],
+    current: Annotated[
+        User, Depends(require_any_permission("action.session.manage", "menu.exam.paper_publish"))
+    ],
 ) -> ExamSessionOut:
     """创建场次。"""
     if body.session_code:
@@ -321,6 +350,9 @@ def create_session(
         course_id=body.course_id,
     )
     _assert_paper_valid_for_session(db, body.paper_id)
+    paper = db.get(ExamPaper, body.paper_id)
+    assert paper is not None
+    lim = _resolve_attempt_limit_for_paper(paper, body.attempt_limit)
     s = ExamSession(
         session_code=code,
         enterprise_id=body.enterprise_id,
@@ -331,6 +363,7 @@ def create_session(
         end_at=body.end_at,
         status="draft",
         created_by=current.id,
+        attempt_limit=lim,
     )
     db.add(s)
     db.commit()
@@ -352,6 +385,7 @@ def get_session(
             require_any_permission(
                 "list.session",
                 "action.session.manage",
+                "menu.exam.paper_publish",
                 "menu.exam.available",
                 "action.exam.take",
             )
@@ -373,12 +407,16 @@ def update_session(
     session_id: int,
     body: ExamSessionUpdate,
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_permission("action.session.manage"))],
+    current: Annotated[
+        User, Depends(require_any_permission("action.session.manage", "menu.exam.paper_publish"))
+    ],
 ) -> ExamSessionOut:
     s = assert_session_in_enterprise(db, current, session_id)
     if s.status != "draft":
         raise HTTPException(status_code=400, detail="仅草稿场次可修改")
     data = body.model_dump(exclude_unset=True)
+    attempt_in = "attempt_limit" in data
+    attempt_patch = data.pop("attempt_limit", None) if attempt_in else None
     if "session_code" in data and data["session_code"] is not None:
         sc = data["session_code"].strip()
         if sc != s.session_code and (
@@ -399,6 +437,12 @@ def update_session(
         _validate_session_business(db, current, paper_id=pid, enterprise_id=eid, course_id=cid)
     for k, v in data.items():
         setattr(s, k, v)
+    paper = db.get(ExamPaper, s.paper_id)
+    if paper is None:
+        raise HTTPException(status_code=404, detail="试卷不存在")
+    if attempt_in or "paper_id" in data:
+        raw_lim = attempt_patch if attempt_in else s.attempt_limit
+        s.attempt_limit = _resolve_attempt_limit_for_paper(paper, raw_lim)
     db.commit()
     db.refresh(s)
     s2 = db.scalars(
@@ -412,7 +456,9 @@ def update_session(
 def publish_session(
     session_id: int,
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_permission("action.session.manage"))],
+    current: Annotated[
+        User, Depends(require_any_permission("action.session.manage", "menu.exam.paper_publish"))
+    ],
 ) -> ExamSessionOut:
     """发布场次。"""
     s = assert_session_in_enterprise(db, current, session_id)
@@ -435,7 +481,9 @@ def publish_session(
 def unpublish_session(
     session_id: int,
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_permission("action.session.manage"))],
+    current: Annotated[
+        User, Depends(require_any_permission("action.session.manage", "menu.exam.paper_publish"))
+    ],
 ) -> ExamSessionOut:
     """反发布：场次改回草稿，考生端不可见。"""
     s = assert_session_in_enterprise(db, current, session_id)
@@ -454,7 +502,9 @@ def unpublish_session(
 def delete_session(
     session_id: int,
     db: Annotated[Session, Depends(get_db)],
-    current: Annotated[User, Depends(require_permission("action.session.manage"))],
+    current: Annotated[
+        User, Depends(require_any_permission("action.session.manage", "menu.exam.paper_publish"))
+    ],
 ) -> None:
     """删除场次（级联删除作答记录）。"""
     s = assert_session_in_enterprise(db, current, session_id)
@@ -558,6 +608,19 @@ def start_attempt(
             started_at=existing.started_at,
             status=existing.status,
         )
+    lim = s.attempt_limit
+    if lim is not None and lim >= 1:
+        cnt = (
+            db.scalar(
+                select(func.count()).select_from(ExamAttempt).where(
+                    ExamAttempt.session_id == session_id,
+                    ExamAttempt.user_id == current.id,
+                )
+            )
+            or 0
+        )
+        if int(cnt) >= lim:
+            raise HTTPException(status_code=400, detail="已达本场考试答题次数上限")
     att = ExamAttempt(session_id=session_id, user_id=current.id, status="in_progress")
     db.add(att)
     db.commit()

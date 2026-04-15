@@ -91,6 +91,9 @@ class ExamSession(Base):
     published_by: Mapped[Optional[int]] = mapped_column(
         ForeignKey("sys_user.id"), index=True, nullable=True, comment="发布人"
     )
+    attempt_limit: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="答题次数上限；空为不限制（练习卷）"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

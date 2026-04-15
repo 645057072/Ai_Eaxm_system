@@ -17,6 +17,11 @@ class ExamSessionCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
+    attempt_limit: Optional[int] = Field(
+        None,
+        ge=1,
+        description="模拟/正式卷答题次数上限；练习卷忽略（后端置空）。默认 1",
+    )
 
     @field_validator("session_code", mode="before")
     @classmethod
@@ -38,6 +43,7 @@ class ExamSessionUpdate(BaseModel):
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
     status: Optional[str] = Field(None, description="draft|published|closed")
+    attempt_limit: Optional[int] = Field(None, ge=1, description="模拟/正式卷；练习卷后端置空")
 
 
 class ExamSessionOut(BaseModel):
@@ -49,6 +55,9 @@ class ExamSessionOut(BaseModel):
     course_name: Optional[str] = None
     paper_id: int
     paper_no: Optional[str] = Field(None, description="试卷编号")
+    paper_title: Optional[str] = Field(None, description="试卷档案中的试卷名称")
+    paper_type: Optional[str] = Field(None, description="试卷类型 formal|mock|practice")
+    attempt_limit: Optional[int] = Field(None, description="答题次数上限，空为不限制")
     title: str
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
