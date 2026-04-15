@@ -11,7 +11,7 @@
       <div v-if="att.practice_report" class="report-wrap">
         <h3 class="report-title">练习报告</h3>
         <pre class="practice-report">{{ att.practice_report }}</pre>
-        <p class="report-hint">（报告篇幅按约一页 A4、宋体五号控制，可打印本页）</p>
+        <p class="report-hint">（宋体五号样式展示，内容较长时可滚动查看或打印）</p>
       </div>
       <el-table :data="att.answers || []">
         <el-table-column prop="question_id" label="题目ID" width="90" />
@@ -72,8 +72,8 @@ onMounted(load);
   font-family: "SimSun", "Songti SC", "STSong", serif;
   font-size: 10.5pt;
   line-height: 1.45;
-  max-height: 280mm;
-  overflow: auto;
+   max-height: none;
+  overflow: visible;
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""练习卷交卷报告：基于得分与题目解析生成简短文字（控制在一页A4、宋体五号量级）。"""
+"""练习卷交卷报告：得分统计 + 已作答错题逐条分析（未答题不写入）。"""
 
 from decimal import Decimal
 from typing import Any, List
@@ -20,35 +20,40 @@ def build_practice_report(
     earned: Decimal,
     full_score: Decimal,
     rows: List[dict[str, Any]],
-    max_chars: int = 560,
 ) -> str:
-    """生成结构化报告文本，超长截断。"""
+    """生成结构化报告：仅列出已作答且不得满分的题目，全文不截断。"""
     if full_score <= 0:
         full_score = Decimal("1")
     rate = (earned / full_score * Decimal("100")).quantize(Decimal("0.1"))
+    n_all = len(rows)
     n_ok = sum(1 for r in rows if r.get("full_correct"))
-    n_all = len(rows) or 1
-    n_wrong = n_all - n_ok
+    n_answered = sum(1 for r in rows if r.get("answered"))
+    n_blank = n_all - n_answered
+    wrong_answered = [r for r in rows if r.get("answered") and not r.get("full_correct")]
 
     lines: list[str] = []
     lines.append("【练习答卷报告】")
     lines.append(f"场次：{session_title}")
     lines.append(f"试卷：{paper_title}")
     lines.append(f"得分：{earned} / {full_score}（得分率约 {rate}%）")
-    lines.append(f"全对题数：{n_ok}，未得满分题数：{n_wrong}。")
+    lines.append(
+        f"全对题数：{n_ok}，已作答错题数：{len(wrong_answered)}，未答题数：{n_blank}"
+        f"（未作答题目不列入下文分析）。"
+    )
     lines.append("")
-    lines.append("【逐题要点】")
-    for r in rows:
-        idx = r.get("index", 0)
-        ql = r.get("type_label") or ""
-        stem = (r.get("stem_preview", "") or "").strip()
-        ok = r.get("full_correct")
-        flag = "正确" if ok else "未得满分"
-        know = (r.get("knowledge", "") or "").strip()
-        if know:
-            lines.append(f"{idx}. [{ql}] {stem} … 结果：{flag}。知识点：{know}")
-        else:
-            lines.append(f"{idx}. [{ql}] {stem} … 结果：{flag}。")
+    lines.append("【错题要点】（仅含已作答且不得满分的题目）")
+    if not wrong_answered:
+        lines.append("无已作答错题；未作答题目不列入本报告。")
+    else:
+        for r in wrong_answered:
+            idx = r.get("index", 0)
+            ql = r.get("type_label") or ""
+            stem = (r.get("stem") or r.get("stem_preview") or "").strip()
+            know = (r.get("knowledge") or "").strip()
+            if know:
+                lines.append(f"{idx}. [{ql}] {stem} 知识点：{know}")
+            else:
+                lines.append(f"{idx}. [{ql}] {stem}")
     lines.append("")
     if rate >= Decimal("85"):
         summ = "总体掌握较好，概念与操作要点多数能准确作答。"
@@ -68,7 +73,7 @@ def build_practice_report(
     lines.append("")
     lines.append("【改进建议】")
     lines.append(
-        "针对未得满分题目，请对照题库解析与教材相关章节逐题订正；"
+        "请针对上述错题对照题库解析与教材相关章节逐题订正；"
         "判断与单选重在概念辨析，多选注意漏选，填空注意表述规范。"
     )
     lines.append("")
@@ -78,7 +83,4 @@ def build_practice_report(
         "一周内完成同类题型二次练习，并记录仍易错点以便专项突破。"
     )
 
-    text = "\n".join(lines)
-    if len(text) > max_chars:
-        text = text[: max_chars - 6].rstrip() + "\n……（已截断至约一页篇幅）"
-    return text
+    return "\n".join(lines)

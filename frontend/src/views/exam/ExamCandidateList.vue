@@ -36,11 +36,30 @@
             <el-table-column label="学员" min-width="160" show-overflow-tooltip>
               <template #default="{ row }">{{ formatStudentCell(row) }}</template>
             </el-table-column>
-            <el-table-column prop="created_at" label="创建时间" width="170">
+                       <el-table-column prop="created_at" label="创建时间" width="170">
               <template #default="{ row }">{{ fmtTime(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
+            <el-table-column label="作答时间" width="130" show-overflow-tooltip>
+              <template #default="{ row }">{{ formatAnswerDuration(row) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="300" fixed="right">
               <template #default="{ row }">
+                <el-button
+                  v-if="auth.can('list.exam_candidate')"
+                  link
+                  type="primary"
+                  :disabled="!row.last_attempt_id"
+                  @click="openAttemptPdf(row)"
+                  ><AppEmoji name="list" size="sm" decorative />查看</el-button
+                >
+                <el-button
+                  v-if="auth.can('list.exam_candidate')"
+                  link
+                  type="primary"
+                  :disabled="!row.last_attempt_id"
+                  @click="openAttemptReport(row)"
+                  ><AppEmoji name="papers" size="sm" decorative />报告</el-button
+                >
                 <el-button v-if="auth.can('action.exam_candidate.update')" link type="primary" @click="openEdit(row)"
                   ><AppEmoji name="edit" size="sm" decorative />编辑</el-button
                 >
@@ -124,6 +143,14 @@
         <el-button type="primary" @click="save">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="reportDlg" title="考试评估报告" width="720px" destroy-on-close>
+      <div v-loading="reportLoading" class="report-dlg-body">
+        <p v-if="reportMeta" class="report-meta">{{ reportMeta }}</p>
+        <pre v-if="reportBody" class="report-pre">{{ reportBody }}</pre>
+        <el-empty v-else-if="!reportLoading" description="暂无报告内容（非练习卷或未生成评估报告）" />
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -137,6 +164,8 @@ import {
   patchExamCandidate,
   deleteExamCandidate,
   fetchExamCandidateStudentChoices,
+  downloadExamCandidateAttemptPdf,
+  getExamCandidateAttemptReport,
 } from "@/api/exam_candidates";
 import { listEnterprises } from "@/api/enterprises";
 import { listCourses } from "@/api/courses";
@@ -171,9 +200,27 @@ const form = reactive({
   created_at: "" as string,
 });
 
+const reportDlg = ref(false);
+const reportLoading = ref(false);
+const reportMeta = ref("");
+const reportBody = ref("");
+
 function fmtTime(v: unknown) {
   if (!v) return "";
   return String(v).replace("T", " ").slice(0, 19);
+}
+
+function formatAnswerDuration(row: Record<string, unknown>) {
+  const sec = row.answer_duration_seconds as number | null | undefined;
+  if (sec == null || sec < 0) return "—";
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const parts: string[] = [];
+  if (h) parts.push(`${h}小时`);
+  if (m) parts.push(`${m}分`);
+  parts.push(`${s}秒`);
+  return parts.join("");
 }
 
 function formatStudentCell(row: Record<string, unknown>) {
@@ -317,6 +364,50 @@ async function save() {
   }
 }
 
+async function openAttemptPdf(row: Record<string, unknown>) {
+  const id = row.id as number;
+  try {
+    const { data } = await downloadExamCandidateAttemptPdf(id);
+    const blob = new Blob([data as BlobPart], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, "打开 PDF 失败"));
+  }
+}
+
+async function openAttemptReport(row: Record<string, unknown>) {
+  const id = row.id as number;
+  reportDlg.value = true;
+  reportLoading.value = true;
+  reportMeta.value = "";
+  reportBody.value = "";
+  try {
+    const { data } = await getExamCandidateAttemptReport(id);
+    const d = data as {
+      session_title?: string;
+      paper_title?: string;
+      paper_type?: string;
+      status?: string;
+      total_score?: string | null;
+      practice_report?: string | null;
+    };
+    const bits = [
+      d.session_title ? `场次：${d.session_title}` : "",
+      d.paper_title ? `试卷：${d.paper_title}` : "",
+      `状态：${d.status ?? "—"} 得分：${d.total_score ?? "—"}`,
+    ].filter(Boolean);
+    reportMeta.value = bits.join("；");
+    reportBody.value = (d.practice_report || "").trim();
+  } catch (e) {
+    reportDlg.value = false;
+    ElMessage.error(apiErrorMessage(e, "加载报告失败"));
+  } finally {
+    reportLoading.value = false;
+  }
+}
+
 async function onDelete(row: Record<string, unknown>) {
   await ElMessageBox.confirm("确定删除该考生记录？", "提示", { type: "warning" });
   try {
@@ -368,5 +459,23 @@ onMounted(async () => {
 .toolbar {
   flex-wrap: wrap;
   gap: 8px;
+}
+.report-meta {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #64748b;
+}
+.report-pre {
+  font-family: "SimSun", "Songti SC", "STSong", serif;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  max-height: 60vh;
+  overflow: auto;
+}
+.report-dlg-body {
+  min-height: 120px;
 }
 </style>

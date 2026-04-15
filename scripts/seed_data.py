@@ -42,6 +42,7 @@ TEACHER_PERMISSIONS = [
     "menu.exam.available",
     "menu.exam.candidate_manage",
     "menu.exam.exam_services",
+    "menu.exam.wrong_practice",
     "action.exam.take",
     "list.exam_candidate",
     "form.exam_candidate",
@@ -50,16 +51,39 @@ TEACHER_PERMISSIONS = [
     "field.exam_candidate.course_id",
     "field.exam_candidate.student_id",
     "field.exam_candidate.created_at",
+    "field.exam_candidate.session_id",
+    "field.exam_candidate.last_attempt_id",
+    "field.exam_candidate.answer_duration_seconds",
     "action.exam_candidate.create",
     "action.exam_candidate.update",
     "action.exam_candidate.delete",
+    "list.exam_service_record",
+    "field.exam_service_record.exam_no",
+    "field.exam_service_record.course_name",
+    "field.exam_service_record.paper_title",
+    "field.exam_service_record.enterprise_name",
+    "field.exam_service_record.student_display",
+    "field.exam_service_record.score",
+    "field.exam_service_record.passed",
+    "field.exam_service_record.created_at",
+    "list.wrong_practice",
+    "field.wrong_practice.course_name",
+    "field.wrong_practice.enterprise_name",
+    "field.wrong_practice.wrong_count",
+    "action.wrong_practice.enter",
 ]
 
 # 考生：参加考试
 STUDENT_PERMISSIONS = [
     "menu.home",
     "menu.exam.available",
+    "menu.exam.wrong_practice",
     "action.exam.take",
+    "list.wrong_practice",
+    "field.wrong_practice.course_name",
+    "field.wrong_practice.enterprise_name",
+    "field.wrong_practice.wrong_count",
+    "action.wrong_practice.enter",
 ]
 
 

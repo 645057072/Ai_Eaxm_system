@@ -7,11 +7,34 @@ from typing import Any, Optional
 from app.models.question import Question
 
 
+def answer_provided(question: Question, user_answer: Any) -> bool:
+    """是否视为考生已作答（未答题不写入练习报告）。"""
+    qt = (question.q_type or "").strip()
+    if user_answer is None:
+        return False
+    if qt == "judge":
+        if isinstance(user_answer, bool):
+            return True
+        return str(user_answer).strip() != ""
+    if qt == "multiple":
+        if isinstance(user_answer, list):
+            return len(user_answer) > 0
+        return str(user_answer).strip() != ""
+    if qt in ("single", "fill"):
+        return str(user_answer).strip() != ""
+    return str(user_answer).strip() != ""
+
+
 def score_for_question(question: Question, user_answer: Any, full_score: Decimal) -> Decimal:
     """客观题：全对得满分，否则 0 分。"""
     if _is_correct(question, user_answer):
         return full_score
     return Decimal("0")
+
+
+def is_correct(question: Question, user_answer: Any) -> bool:
+    """是否答对（错题练习移除用）。"""
+    return _is_correct(question, user_answer)
 
 
 def _is_correct(question: Question, user_answer: Any) -> bool:

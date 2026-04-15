@@ -1,20 +1,23 @@
 # -*- coding: utf-8 -*-
 """考生管理 CRUD。"""
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import and_, false, func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_db, require_permission
 from app.core.permissions import is_super_role
 from app.models.course import Course
 from app.models.enterprise import Enterprise
+from app.models.exam import ExamAttempt, ExamSession
 from app.models.exam_candidate import ExamCandidate
 from app.models.student import Student
 from app.models.user import User
+from app.services.attempt_pdf import build_attempt_pdf_bytes
 from app.schemas.common import PageParams, PageResult
 from app.schemas.exam_candidate import ExamCandidateCreate, ExamCandidateOut, ExamCandidateUpdate
 from app.services.data_scope import ensure_in_managed_enterprise_scope, get_managed_enterprise_ids
@@ -105,6 +108,68 @@ def student_choices(
     }
 
 
+@router.get("/{candidate_id}/attempt-pdf")
+def download_candidate_attempt_pdf(
+    candidate_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[User, Depends(require_permission("list.exam_candidate"))],
+) -> Response:
+    """下载该考生最近一次答卷明细 PDF。"""
+    obj = db.get(ExamCandidate, candidate_id)
+    if obj is None:
+        raise HTTPException(status_code=404, detail="考生记录不存在")
+    if not is_super_role(current):
+        ensure_in_managed_enterprise_scope(db, current, obj.enterprise_id)
+    if not obj.last_attempt_id:
+        raise HTTPException(status_code=400, detail="暂无作答记录，无法生成 PDF")
+    try:
+        pdf_bytes = build_attempt_pdf_bytes(db, obj.last_attempt_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    fn = f"exam_attempt_{obj.last_attempt_id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fn}"'},
+    )
+
+
+@router.get("/{candidate_id}/attempt-report")
+def get_candidate_attempt_report(
+    candidate_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[User, Depends(require_permission("list.exam_candidate"))],
+) -> dict[str, Any]:
+    """考生最近一次作答的评估报告（练习卷含 practice_report）。"""
+    obj = db.get(ExamCandidate, candidate_id)
+    if obj is None:
+        raise HTTPException(status_code=404, detail="考生记录不存在")
+    if not is_super_role(current):
+        ensure_in_managed_enterprise_scope(db, current, obj.enterprise_id)
+    if not obj.last_attempt_id:
+        raise HTTPException(status_code=400, detail="暂无作答记录")
+    att = db.scalars(
+        select(ExamAttempt)
+        .options(
+            joinedload(ExamAttempt.session).joinedload(ExamSession.paper),
+        )
+        .where(ExamAttempt.id == obj.last_attempt_id)
+    ).first()
+    if att is None:
+        raise HTTPException(status_code=404, detail="作答记录不存在")
+    sess = att.session
+    paper = sess.paper if sess else None
+    return {
+        "attempt_id": att.id,
+        "status": att.status,
+        "total_score": str(att.total_score) if att.total_score is not None else None,
+        "practice_report": att.practice_report,
+        "session_title": sess.title if sess else None,
+        "paper_title": paper.title if paper else None,
+        "paper_type": (paper.paper_type or "formal") if paper else "formal",
+    }
+
+
 @router.get("", response_model=PageResult[ExamCandidateOut])
 def list_exam_candidates(
     db: Annotated[Session, Depends(get_db)],
@@ -162,7 +227,7 @@ def create_exam_candidate(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=400, detail="考试编号在该企业下已存在")
+        raise HTTPException(status_code=400, detail="该企业下相同考试编号与学员已存在")
     db.refresh(obj)
     return _load_out(db, obj.id)
 
@@ -203,7 +268,7 @@ def update_exam_candidate(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=400, detail="考试编号在该企业下已存在")
+        raise HTTPException(status_code=400, detail="该企业下相同考试编号与学员已存在")
     db.refresh(obj)
     return _load_out(db, obj.id)
 

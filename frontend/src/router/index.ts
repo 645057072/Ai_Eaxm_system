@@ -87,8 +87,20 @@ const router = createRouter({
         {
           path: "exam/services",
           name: "exam-services",
-          component: () => import("@/views/placeholder/ModulePlaceholder.vue"),
-          meta: { permission: "menu.exam.exam_services", title: "考试服务" },
+          component: () => import("@/views/exam/ExamServiceList.vue"),
+          meta: { permission: "list.exam_service_record", title: "考试服务" },
+        },
+        {
+          path: "exam/wrong-practice",
+          name: "wrong-practice-list",
+          component: () => import("@/views/exam/WrongPracticeList.vue"),
+          meta: { permission: "list.wrong_practice", title: "错题练习" },
+        },
+        {
+          path: "exam/wrong-practice/:courseId",
+          name: "wrong-practice-take",
+          component: () => import("@/views/exam/WrongPracticeTake.vue"),
+          meta: { permission: "action.wrong_practice.enter", title: "错题练习" },
         },
         {
           path: "exam/take/:sessionId",

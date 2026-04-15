@@ -19,3 +19,11 @@ export function deleteExamCandidate(id: number) {
 export function fetchExamCandidateStudentChoices(params: { enterprise_id?: number; keyword?: string; limit?: number }) {
   return http.get("/v1/exam-candidates/student-choices", { params });
 }
+
+export function downloadExamCandidateAttemptPdf(id: number) {
+  return http.get(`/v1/exam-candidates/${id}/attempt-pdf`, { responseType: "blob" });
+}
+
+export function getExamCandidateAttemptReport(id: number) {
+  return http.get(`/v1/exam-candidates/${id}/attempt-report`);
+}

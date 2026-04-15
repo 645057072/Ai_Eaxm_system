@@ -39,6 +39,7 @@
               'menu.exam.available',
               'menu.exam.candidate_manage',
               'menu.exam.exam_services',
+              'menu.exam.wrong_practice',
             )
           "
           index="exam-manage"
@@ -54,6 +55,9 @@
           </el-menu-item>
           <el-menu-item v-if="auth.can('menu.exam.exam_services')" index="/exam/services">
             <span class="menu-item-inner"><AppEmoji name="sessions" size="sm" decorative />考试服务</span>
+          </el-menu-item>
+          <el-menu-item v-if="auth.can('menu.exam.wrong_practice')" index="/exam/wrong-practice">
+            <span class="menu-item-inner"><AppEmoji name="questionBank" size="sm" decorative />错题练习</span>
           </el-menu-item>
         </el-sub-menu>
 

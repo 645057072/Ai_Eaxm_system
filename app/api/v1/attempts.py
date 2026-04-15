@@ -15,7 +15,10 @@ from app.models.question import Question
 from app.models.user import User
 from app.schemas.attempt import AnswersBatchIn, ExamAttemptOut
 from app.services.data_scope import ensure_in_managed_enterprise_scope
-from app.services.grading import score_for_question
+from app.services.grading import answer_provided, score_for_question
+from app.services.exam_candidate_sync import update_exam_candidate_after_submit
+from app.services.exam_service_record_sync import upsert_exam_service_record
+from app.services.wrong_question_sync import remove_wrong_question, upsert_wrong_question
 from app.services.practice_report import build_practice_report, q_type_label_cn
 
 router = APIRouter(prefix="/attempts", tags=["考试作答"])
@@ -251,16 +254,35 @@ def submit_attempt(
                 )
             )
         full_correct = it.score > 0 and sc >= it.score
-        know = (q.analysis or "").strip() or (q.stem or "")[:40].replace("\n", " ")
-        if len(know) > 120:
-            know = know[:117] + "…"
-        stem_preview = (q.stem or "")[:45].replace("\n", " ")
+        answered = answer_provided(q, ua)
+        stem_text = (q.stem or "").replace("\n", " ").strip()
+        know = (q.analysis or "").strip()
+        # 错题集：未作答 或 未得满分 => 入库；已作答且得满分 => 移除
+        cid = q.course_id or sess.course_id or paper.course_id
+        if cid is not None:
+            if (not answered) or (not full_correct):
+                upsert_wrong_question(
+                    db,
+                    enterprise_id=sess.enterprise_id,
+                    user_id=att.user_id,
+                    course_id=int(cid),
+                    question_id=int(q.id),
+                )
+            else:
+                remove_wrong_question(
+                    db,
+                    enterprise_id=sess.enterprise_id,
+                    user_id=att.user_id,
+                    course_id=int(cid),
+                    question_id=int(q.id),
+                )
         detail_rows.append(
             {
                 "index": idx,
                 "type_label": q_type_label_cn(q.q_type),
-                "stem_preview": stem_preview,
+                "stem": stem_text,
                 "full_correct": full_correct,
+                "answered": answered,
                 "knowledge": know,
             }
         )
@@ -279,6 +301,8 @@ def submit_attempt(
             full_marks if full_marks > 0 else Decimal("1"),
             detail_rows,
         )
+    update_exam_candidate_after_submit(db, att)
+    upsert_exam_service_record(db, att, sess, paper, total)
     db.commit()
 
     att2 = db.scalars(

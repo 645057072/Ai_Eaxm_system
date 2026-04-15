@@ -8,6 +8,7 @@ from app.api.v1 import (
     courses,
     enterprises,
     exam_candidates,
+    exam_service_records,
     exam_sessions,
     files,
     papers,
@@ -18,6 +19,7 @@ from app.api.v1 import (
     roles,
     students,
     users,
+    wrong_practice,
 )
 
 api_router = APIRouter()
@@ -36,3 +38,5 @@ api_router.include_router(exam_sessions.router, prefix="/exam-sessions", tags=["
 api_router.include_router(attempts.router, tags=["考试作答"])
 api_router.include_router(students.router, prefix="/students", tags=["学员管理"])
 api_router.include_router(exam_candidates.router, prefix="/exam-candidates", tags=["考生管理"])
+api_router.include_router(exam_service_records.router, prefix="/exam-service-records", tags=["考试服务"])
+api_router.include_router(wrong_practice.router, tags=["错题练习"])

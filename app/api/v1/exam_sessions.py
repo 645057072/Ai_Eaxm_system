@@ -20,6 +20,7 @@ from app.schemas.attempt import AttemptStartOut
 from app.schemas.common import PageParams, PageResult
 from app.schemas.exam_take import TakeDataOut, TakeQuestionItem
 from app.schemas.session import ExamSessionCreate, ExamSessionOut, ExamSessionUpdate
+from app.services.exam_candidate_sync import ensure_exam_candidate_for_session
 from app.services.data_scope import (
     assert_paper_in_enterprise,
     assert_session_in_enterprise,
@@ -635,6 +636,8 @@ def start_attempt(
             if existing.session and existing.session.paper
             else "formal"
         )
+        ensure_exam_candidate_for_session(db, s, current, existing.id)
+        db.commit()
         return AttemptStartOut(
             attempt_id=existing.id,
             session_id=s.id,
@@ -662,6 +665,8 @@ def start_attempt(
     db.add(att)
     db.commit()
     db.refresh(att)
+    ensure_exam_candidate_for_session(db, s, current, att.id)
+    db.commit()
     dur = s.paper.duration_minutes if s.paper else 60
     ptype = (s.paper.paper_type or "formal") if s.paper else "formal"
     return AttemptStartOut(

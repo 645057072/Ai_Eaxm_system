@@ -16,6 +16,9 @@ class ExamCandidateOut(BaseModel):
     student_id: int
     student_no: Optional[str] = None
     student_name: Optional[str] = None
+    session_id: Optional[int] = None
+    last_attempt_id: Optional[int] = None
+    answer_duration_seconds: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
