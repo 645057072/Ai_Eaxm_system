@@ -30,7 +30,7 @@
               <template #default="{ row }">{{ (row.paper_no as string) || "—" }}</template>
             </el-table-column>
             <el-table-column label="试卷类型" width="110" align="center">
-              <template #default="{ row }">{{ String(row.paper_type || "—") }}</template>
+              <template #default="{ row }">{{ paperTypeLabel(row.paper_type as string | undefined) }}</template>
             </el-table-column>
             <el-table-column label="操作" width="140">
               <template #default="{ row }">
@@ -57,6 +57,15 @@ const rows = ref<Record<string, unknown>[]>([]);
 const loading = ref(false);
 const kwPaperTitle = ref("");
 const kwCourse = ref("");
+
+function paperTypeLabel(t?: string) {
+  const v = (t || "").trim();
+  if (!v) return "—";
+  if (v === "practice") return "练习";
+  if (v === "mock") return "模拟";
+  if (v === "formal") return "正式";
+  return v;
+}
 
 function formatDuration(v: unknown) {
   if (v == null || v === "") return "—";

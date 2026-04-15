@@ -11,11 +11,8 @@
 
     <div v-if="q" class="block">
       <div class="qhead">
-        <span class="qstem">{{ q.stem }}</span>
-      </div>
-      <div class="qtype-center">
-        <span class="qtype-pill">{{ qTypeLabel(q.q_type) }}</span>
-        <span class="remain">剩余 {{ q.remaining }}</span>
+        <span class="qstem">{{ q.stem }}（{{ qTypeLabel(q.q_type) }}）</span>
+        <span class="remain-badge">剩余 {{ q.remaining }}</span>
       </div>
 
       <div v-if="!submitted">
@@ -56,7 +53,7 @@
         </el-alert>
         <div class="kv">
           <div class="k">标准答案</div>
-          <pre class="v">{{ fmtJson(resultStd) }}</pre>
+          <pre class="v">{{ formatStdAnswer(q, resultStd) }}</pre>
         </div>
         <div v-if="resultAnalysis" class="kv">
           <div class="k">解析</div>
@@ -116,12 +113,34 @@ function normOptions(raw: unknown): { key: string; text: string }[] {
   return raw.map((x: Record<string, string>) => ({ key: String(x.key || x.label || ""), text: String(x.text || x.value || "") }));
 }
 
-function fmtJson(v: unknown) {
-  try {
-    return JSON.stringify(v, null, 2);
-  } catch {
-    return String(v ?? "");
+function formatStdAnswer(q0: Q | null, std: unknown) {
+  if (!q0) return String(std ?? "");
+  const t = (q0.q_type || "").trim();
+  if (t === "judge") {
+    const s = String(std ?? "").trim().toLowerCase();
+    if (std === true || s === "true" || s === "1" || s === "正确") return "正确";
+    if (std === false || s === "false" || s === "0" || s === "错误") return "错误";
+    return String(std ?? "");
   }
+  const opts = normOptions(q0.options_json);
+  const map = new Map(opts.map((o) => [o.key.toUpperCase(), o.text]));
+  const lineOf = (k: string) => {
+    const kk = k.trim().toUpperCase();
+    const txt = map.get(kk) || "";
+    return txt ? `${kk}. ${txt}` : kk;
+  };
+  if (t === "single") {
+    const k = String(std ?? "").trim();
+    return k ? lineOf(k) : "—";
+  }
+  if (t === "multiple") {
+    const arr = Array.isArray(std) ? std : std == null ? [] : [std];
+    const keys = arr.map((x) => String(x)).filter((x) => x.trim());
+    if (!keys.length) return "—";
+    return keys.map(lineOf).join("\n");
+  }
+  if (t === "fill") return String(std ?? "—");
+  return String(std ?? "—");
 }
 
 function resetAnswerState() {
@@ -219,26 +238,18 @@ onMounted(() => void loadNext());
   margin-bottom: 8px;
   font-weight: 500;
   line-height: 1.5;
+  position: relative;
 }
-.qtype-center {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 10px;
-}
-.qtype-pill {
-  display: inline-block;
-  padding: 2px 12px;
-  font-size: 13px;
-  color: #334155;
-  background: #f1f5f9;
-  border-radius: 999px;
-  border: 1px solid #e2e8f0;
-}
-.remain {
+.remain-badge {
+  position: absolute;
+  right: 0;
+  top: 0;
   font-size: 12px;
   color: #64748b;
+  padding: 2px 10px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 999px;
 }
 .ops {
   margin-top: 12px;
