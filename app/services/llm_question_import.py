@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional, Tuple
+import re
+from typing import Any, Optional, Tuple
 
 import httpx
 
@@ -109,13 +110,25 @@ def llm_parse_questions_from_text(text: str) -> Tuple[list[dict[str, Any]], list
             {"role": "system", "content": sys},
             {"role": "user", "content": user},
         ],
-        "response_format": {"type": "json_object"},
     }
 
-    headers = {"Authorization": f"Bearer {key}"}
+    headers = {
+        "Authorization": f"Bearer {key}",
+        # OpenRouter 等网关会用到（不要求必须填，空也不影响）
+        "HTTP-Referer": "https://localhost/",
+        "X-Title": "exam-system-import",
+    }
     with httpx.Client(timeout=90) as client:
-        r = client.post(url, json=payload, headers=headers)
-        r.raise_for_status()
+        try:
+            r = client.post(url, json=payload, headers=headers)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            body = ""
+            try:
+                body = e.response.text
+            except Exception:
+                body = ""
+            raise ValueError(f"LLM 网关返回错误：HTTP {e.response.status_code} {body[:800]}") from e
         data = r.json()
     content = (
         (data.get("choices") or [{}])[0]
@@ -124,6 +137,11 @@ def llm_parse_questions_from_text(text: str) -> Tuple[list[dict[str, Any]], list
     )
     if not content:
         return [], ["[LLM] 返回内容为空"]
+    # 兼容部分模型返回 ```json ... ```
+    content = content.strip()
+    m = re.search(r"\{[\s\S]*\}|\[[\s\S]*\]", content)
+    if m:
+        content = m.group(0)
     obj = json.loads(content)
     arr = obj.get("items") if isinstance(obj, dict) and "items" in obj else obj
     if not isinstance(arr, list):
