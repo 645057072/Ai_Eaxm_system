@@ -2,7 +2,7 @@
   <div class="fill-height">
     <el-card class="page-list-card">
       <template #header>
-        <div class="page-list-card-title"><AppEmoji name="availableExams" size="sm" decorative />可参加的考试</div>
+        <div class="page-list-card-title"><AppEmoji name="availableExams" size="sm" decorative />考试管理</div>
       </template>
       <div class="page-list-body">
         <div class="page-list-table">

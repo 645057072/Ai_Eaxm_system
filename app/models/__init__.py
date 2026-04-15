@@ -4,6 +4,7 @@
 from app.models.course import Course
 from app.models.enterprise import Enterprise
 from app.models.exam import ExamAttempt, ExamAnswer, ExamPaper, ExamPaperItem, ExamSession
+from app.models.exam_candidate import ExamCandidate
 from app.models.paper_level import PaperLevel
 from app.models.print_template import PrintTemplate
 from app.models.permission import RolePermission
@@ -26,4 +27,5 @@ __all__ = [
     "ExamAttempt",
     "ExamAnswer",
     "Student",
+    "ExamCandidate",
 ]

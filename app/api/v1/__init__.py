@@ -7,6 +7,7 @@ from app.api.v1 import (
     auth,
     courses,
     enterprises,
+    exam_candidates,
     exam_sessions,
     files,
     papers,
@@ -34,3 +35,4 @@ api_router.include_router(print_templates.router, prefix="/print-templates", tag
 api_router.include_router(exam_sessions.router, prefix="/exam-sessions", tags=["考试场次"])
 api_router.include_router(attempts.router, tags=["考试作答"])
 api_router.include_router(students.router, prefix="/students", tags=["学员管理"])
+api_router.include_router(exam_candidates.router, prefix="/exam-candidates", tags=["考生管理"])

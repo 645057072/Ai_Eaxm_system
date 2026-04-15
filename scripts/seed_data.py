@@ -39,6 +39,20 @@ TEACHER_PERMISSIONS = [
     "action.question.batch",
     "action.paper.manage",
     "action.session.manage",
+    "menu.exam.available",
+    "menu.exam.candidate_manage",
+    "menu.exam.exam_services",
+    "action.exam.take",
+    "list.exam_candidate",
+    "form.exam_candidate",
+    "field.exam_candidate.exam_no",
+    "field.exam_candidate.enterprise_id",
+    "field.exam_candidate.course_id",
+    "field.exam_candidate.student_id",
+    "field.exam_candidate.created_at",
+    "action.exam_candidate.create",
+    "action.exam_candidate.update",
+    "action.exam_candidate.delete",
 ]
 
 # 考生：参加考试

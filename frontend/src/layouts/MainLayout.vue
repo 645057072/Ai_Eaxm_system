@@ -33,9 +33,29 @@
         <el-menu-item v-if="auth.can('menu.exam.sessions')" index="/sessions">
           <span class="menu-item-inner"><AppEmoji name="sessions" size="sm" decorative />考试场次</span>
         </el-menu-item>
-        <el-menu-item v-if="auth.can('menu.exam.available')" index="/exam/available">
-          <span class="menu-item-inner"><AppEmoji name="availableExams" size="sm" decorative />可参加的考试</span>
-        </el-menu-item>
+        <el-sub-menu
+          v-if="
+            auth.canAny(
+              'menu.exam.available',
+              'menu.exam.candidate_manage',
+              'menu.exam.exam_services',
+            )
+          "
+          index="exam-manage"
+        >
+          <template #title>
+            <span class="menu-item-inner"><AppEmoji name="availableExams" size="sm" decorative />考试管理</span>
+          </template>
+          <el-menu-item v-if="auth.can('menu.exam.available')" index="/exam/available">
+            <span class="menu-item-inner"><AppEmoji name="availableExams" size="sm" decorative />在线考试</span>
+          </el-menu-item>
+          <el-menu-item v-if="auth.can('menu.exam.candidate_manage')" index="/exam/candidate-manage">
+            <span class="menu-item-inner"><AppEmoji name="roleStudent" size="sm" decorative />考生管理</span>
+          </el-menu-item>
+          <el-menu-item v-if="auth.can('menu.exam.exam_services')" index="/exam/services">
+            <span class="menu-item-inner"><AppEmoji name="sessions" size="sm" decorative />考试服务</span>
+          </el-menu-item>
+        </el-sub-menu>
 
         <!-- 系统管理：按功能授权显示，默认不展开 -->
         <el-sub-menu

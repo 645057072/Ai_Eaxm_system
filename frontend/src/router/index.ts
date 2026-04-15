@@ -76,7 +76,19 @@ const router = createRouter({
           path: "exam/available",
           name: "exam-available",
           component: () => import("@/views/exam/AvailableExams.vue"),
-          meta: { permission: "menu.exam.available" },
+          meta: { permission: "menu.exam.available", title: "考试管理" },
+        },
+        {
+          path: "exam/candidate-manage",
+          name: "exam-candidate-manage",
+          component: () => import("@/views/exam/ExamCandidateList.vue"),
+          meta: { permission: "menu.exam.candidate_manage", title: "考生管理" },
+        },
+        {
+          path: "exam/services",
+          name: "exam-services",
+          component: () => import("@/views/placeholder/ModulePlaceholder.vue"),
+          meta: { permission: "menu.exam.exam_services", title: "考试服务" },
         },
         {
           path: "exam/take/:sessionId",

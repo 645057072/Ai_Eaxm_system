@@ -477,6 +477,23 @@ def publish_session(
     return _session_to_out(s2)
 
 
+def _assert_unpublish_not_blocked_by_attempts(db: Session, session_id: int, s: ExamSession) -> None:
+    """已发布场次若已有考生作答（试卷发布侧已形成关联），禁止反发布。"""
+    if s.status != "published":
+        return
+    n = (
+        db.scalar(
+            select(func.count()).select_from(ExamAttempt).where(ExamAttempt.session_id == session_id)
+        )
+        or 0
+    )
+    if int(n) > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="该场次已发布且存在考生作答记录，与试卷发布业务已关联，禁止反发布",
+        )
+
+
 @router.post("/{session_id}/unpublish", response_model=ExamSessionOut)
 def unpublish_session(
     session_id: int,
@@ -487,6 +504,7 @@ def unpublish_session(
 ) -> ExamSessionOut:
     """反发布：场次改回草稿，考生端不可见。"""
     s = assert_session_in_enterprise(db, current, session_id)
+    _assert_unpublish_not_blocked_by_attempts(db, session_id, s)
     s.status = "draft"
     s.published_by = None
     db.commit()

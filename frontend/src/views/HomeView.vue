@@ -21,7 +21,7 @@
     </p>
     <p v-if="auth.can('menu.exam.available')" class="hint">
       <AppEmoji name="availableExams" size="sm" decorative />
-      请从左侧进入「可参加的考试」开始答题。
+      请从左侧「考试管理」进入「在线考试」开始答题。
     </p>
     <p v-if="auth.canAny('menu.system.users', 'menu.system.roles')" class="hint">
       <AppEmoji name="users" size="sm" decorative />
