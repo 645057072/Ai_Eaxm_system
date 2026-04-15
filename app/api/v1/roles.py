@@ -91,7 +91,8 @@ def get_role_permissions(
     if db.get(Role, role_id) is None:
         raise HTTPException(status_code=404, detail="角色不存在")
     rows = db.scalars(select(RolePermission.permission_code).where(RolePermission.role_id == role_id)).all()
-    return list(rows)
+    valid = set(ALL_CODES)
+    return [c for c in rows if c in valid]
 
 
 @router.put("/{role_id}/permissions", response_model=List[str])
@@ -105,16 +106,21 @@ def set_role_permissions(
     r = db.get(Role, role_id)
     if r is None:
         raise HTTPException(status_code=404, detail="角色不存在")
+    # 只持久化目录内编码；忽略空串、重复及已不在目录中的历史编码（与 get过滤一致）
     valid = set(ALL_CODES)
+    seen: set[str] = set()
+    sanitized: List[str] = []
     for c in body.codes:
-        if c not in valid:
-            raise HTTPException(status_code=400, detail=f"未知功能点: {c}")
+        if not c or c not in valid or c in seen:
+            continue
+        seen.add(c)
+        sanitized.append(c)
     db.execute(delete(RolePermission).where(RolePermission.role_id == role_id))
-    for c in body.codes:
+    for c in sanitized:
         db.add(RolePermission(role_id=role_id, permission_code=c))
     db.commit()
     rows = db.scalars(select(RolePermission.permission_code).where(RolePermission.role_id == role_id)).all()
-    return list(rows)
+    return [c for c in rows if c in valid]
 
 
 @router.patch("/{role_id}", response_model=RoleOut)

@@ -10,7 +10,8 @@ T = TypeVar("T")
 
 class PageParams(BaseModel):
     skip: int = Field(0, ge=0)
-    limit: int = Field(20, ge=1, le=200)
+    # 用户管理等场景需一次拉取较多企业，上限放宽（仍防极端大包）
+    limit: int = Field(20, ge=1, le=500)
 
 
 class PageResult(BaseModel, Generic[T]):
