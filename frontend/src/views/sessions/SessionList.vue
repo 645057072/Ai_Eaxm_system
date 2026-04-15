@@ -50,6 +50,12 @@
               <template #default="{ row }">{{ (row.course_name as string) || "—" }}</template>
             </el-table-column>
             <el-table-column prop="title" label="标题" min-width="120" show-overflow-tooltip />
+            <el-table-column label="操作员" width="100" show-overflow-tooltip>
+              <template #default="{ row }">{{ (row.operator_name as string) || "—" }}</template>
+            </el-table-column>
+            <el-table-column label="发布员" width="100" show-overflow-tooltip>
+              <template #default="{ row }">{{ (row.publisher_name as string) || "—" }}</template>
+            </el-table-column>
             <el-table-column label="试卷编号" width="130" show-overflow-tooltip>
               <template #default="{ row }">{{ (row.paper_no as string) || "—" }}</template>
             </el-table-column>

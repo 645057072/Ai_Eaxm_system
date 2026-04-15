@@ -54,6 +54,9 @@ class ExamSessionOut(BaseModel):
     end_at: Optional[datetime] = None
     status: str
     created_by: Optional[int] = None
+    operator_name: Optional[str] = Field(None, description="新建场次操作员（用户名称）")
+    published_by: Optional[int] = Field(None, description="发布人用户ID")
+    publisher_name: Optional[str] = Field(None, description="发布员（用户名称）")
     created_at: datetime
     updated_at: datetime
     paper: Optional[PaperOut] = None

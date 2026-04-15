@@ -85,5 +85,10 @@ class User(Base):
         back_populates="creator",
         foreign_keys="ExamSession.created_by",
     )
+    sessions_published: Mapped[List["ExamSession"]] = relationship(
+        "ExamSession",
+        back_populates="publisher",
+        foreign_keys="ExamSession.published_by",
+    )
     attempts: Mapped[List["ExamAttempt"]] = relationship(back_populates="user")
     courses_created: Mapped[List["Course"]] = relationship("Course", back_populates="creator")

@@ -31,8 +31,34 @@ from app.services.data_scope import (
 router = APIRouter()
 
 
+def _session_out_load_options():
+    """列表/详情返回 ExamSessionOut 时统一预加载。"""
+    return (
+        joinedload(ExamSession.enterprise),
+        joinedload(ExamSession.course),
+        joinedload(ExamSession.paper),
+        joinedload(ExamSession.creator),
+        joinedload(ExamSession.publisher),
+    )
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _dt_as_utc(dt: datetime) -> datetime:
+    """与数据库存储混用 naive/aware 时统一为 UTC，避免比较报错500。"""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _user_display_name(u: User | None) -> str | None:
+    if u is None:
+        return None
+    if u.full_name and str(u.full_name).strip():
+        return str(u.full_name).strip()
+    return u.username or None
 
 
 def _allocate_session_code(db: Session) -> str:
@@ -87,6 +113,9 @@ def _session_to_out(s: ExamSession) -> ExamSessionOut:
         end_at=s.end_at,
         status=s.status,
         created_by=s.created_by,
+        operator_name=_user_display_name(s.creator),
+        published_by=s.published_by,
+        publisher_name=_user_display_name(s.publisher),
         created_at=s.created_at,
         updated_at=s.updated_at,
         paper=None,
@@ -98,7 +127,9 @@ def _assert_publish_within_exam_window(s: ExamSession) -> None:
     if s.start_at is None or s.end_at is None:
         raise HTTPException(status_code=400, detail="请先设置考试开始与结束时间后再发布")
     now = _now()
-    if not (s.start_at <= now <= s.end_at):
+    start = _dt_as_utc(s.start_at)
+    end = _dt_as_utc(s.end_at)
+    if not (start <= now <= end):
         raise HTTPException(status_code=400, detail="仅在考试开放时间内允许发布场次")
 
 
@@ -151,11 +182,7 @@ def list_available_for_student(
     rows = db.scalars(
         select(ExamSession)
         .join(ExamPaper, ExamSession.paper_id == ExamPaper.id)
-        .options(
-            joinedload(ExamSession.enterprise),
-            joinedload(ExamSession.course),
-            joinedload(ExamSession.paper),
-        )
+        .options(*_session_out_load_options())
         .where(*conds)
         .order_by(ExamSession.id.desc())
         .offset(page.skip)
@@ -265,11 +292,7 @@ def list_sessions(
         else:
             q = q.where(SessionCourse.name.ilike(kw))
     rows = db.scalars(
-        q.options(
-            joinedload(ExamSession.enterprise),
-            joinedload(ExamSession.course),
-            joinedload(ExamSession.paper),
-        )
+        q.options(*_session_out_load_options())
         .offset(page.skip)
         .limit(page.limit)
         .order_by(ExamSession.id.desc())
@@ -313,13 +336,7 @@ def create_session(
     db.commit()
     db.refresh(s)
     s2 = db.scalars(
-        select(ExamSession)
-        .options(
-            joinedload(ExamSession.enterprise),
-            joinedload(ExamSession.course),
-            joinedload(ExamSession.paper),
-        )
-        .where(ExamSession.id == s.id)
+        select(ExamSession).options(*_session_out_load_options()).where(ExamSession.id == s.id)
     ).first()
     assert s2 is not None
     return _session_to_out(s2)
@@ -343,13 +360,7 @@ def get_session(
 ) -> ExamSessionOut:
     """场次详情。"""
     s = db.scalars(
-        select(ExamSession)
-        .options(
-            joinedload(ExamSession.enterprise),
-            joinedload(ExamSession.course),
-            joinedload(ExamSession.paper),
-        )
-        .where(ExamSession.id == session_id)
+        select(ExamSession).options(*_session_out_load_options()).where(ExamSession.id == session_id)
     ).first()
     if s is None:
         raise HTTPException(status_code=404, detail="场次不存在")
@@ -391,13 +402,7 @@ def update_session(
     db.commit()
     db.refresh(s)
     s2 = db.scalars(
-        select(ExamSession)
-        .options(
-            joinedload(ExamSession.enterprise),
-            joinedload(ExamSession.course),
-            joinedload(ExamSession.paper),
-        )
-        .where(ExamSession.id == session_id)
+        select(ExamSession).options(*_session_out_load_options()).where(ExamSession.id == session_id)
     ).first()
     assert s2 is not None
     return _session_to_out(s2)
@@ -416,16 +421,11 @@ def publish_session(
     _assert_paper_valid_for_session(db, s.paper_id)
     _assert_publish_within_exam_window(s)
     s.status = "published"
+    s.published_by = current.id
     db.commit()
     db.refresh(s)
     s2 = db.scalars(
-        select(ExamSession)
-        .options(
-            joinedload(ExamSession.enterprise),
-            joinedload(ExamSession.course),
-            joinedload(ExamSession.paper),
-        )
-        .where(ExamSession.id == session_id)
+        select(ExamSession).options(*_session_out_load_options()).where(ExamSession.id == session_id)
     ).first()
     assert s2 is not None
     return _session_to_out(s2)
@@ -440,16 +440,11 @@ def unpublish_session(
     """反发布：场次改回草稿，考生端不可见。"""
     s = assert_session_in_enterprise(db, current, session_id)
     s.status = "draft"
+    s.published_by = None
     db.commit()
     db.refresh(s)
     s2 = db.scalars(
-        select(ExamSession)
-        .options(
-            joinedload(ExamSession.enterprise),
-            joinedload(ExamSession.course),
-            joinedload(ExamSession.paper),
-        )
-        .where(ExamSession.id == session_id)
+        select(ExamSession).options(*_session_out_load_options()).where(ExamSession.id == session_id)
     ).first()
     assert s2 is not None
     return _session_to_out(s2)
@@ -489,9 +484,11 @@ def get_take_data(
         raise HTTPException(status_code=400, detail="考试未发布")
     if s.start_at is None or s.end_at is None:
         raise HTTPException(status_code=400, detail="考试时间未设置，无法进入考试")
-    if now < s.start_at:
+    sa = _dt_as_utc(s.start_at)
+    ea = _dt_as_utc(s.end_at)
+    if now < sa:
         raise HTTPException(status_code=400, detail="考试尚未开始，无法进入考试")
-    if now > s.end_at:
+    if now > ea:
         raise HTTPException(status_code=400, detail="考试已结束，无法进入考试")
     paper = s.paper
     if paper is None:
@@ -537,9 +534,11 @@ def start_attempt(
         raise HTTPException(status_code=400, detail="考试未发布")
     if s.start_at is None or s.end_at is None:
         raise HTTPException(status_code=400, detail="考试时间未设置，无法进入考试")
-    if now < s.start_at:
+    sa = _dt_as_utc(s.start_at)
+    ea = _dt_as_utc(s.end_at)
+    if now < sa:
         raise HTTPException(status_code=400, detail="考试尚未开始，无法进入考试")
-    if now > s.end_at:
+    if now > ea:
         raise HTTPException(status_code=400, detail="考试已结束，无法进入考试")
     existing = db.scalars(
         select(ExamAttempt)

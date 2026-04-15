@@ -159,12 +159,13 @@ def assert_paper_in_enterprise(db: Session, current: User, paper_id: int) -> Exa
 
 
 def assert_session_in_enterprise(db: Session, current: User, session_id: int) -> ExamSession:
+    """按场次所属企业校验数据权限（同企业树内具备管理权限的用户可操作他人创建的场次）。"""
     s = db.get(ExamSession, session_id)
     if s is None:
         raise HTTPException(status_code=404, detail="场次不存在")
     if is_super_role(current):
         return s
-    assert_paper_in_enterprise(db, current, s.paper_id)
+    ensure_in_managed_enterprise_scope(db, current, s.enterprise_id)
     return s
 
 

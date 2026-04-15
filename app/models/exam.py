@@ -88,6 +88,9 @@ class ExamSession(Base):
     # draft / published / closed
     status: Mapped[str] = mapped_column(String(16), default="draft", index=True)
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("sys_user.id"), index=True)
+    published_by: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("sys_user.id"), index=True, nullable=True, comment="发布人"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -98,6 +101,11 @@ class ExamSession(Base):
     course: Mapped[Optional["Course"]] = relationship("Course", foreign_keys=[course_id])
     creator: Mapped[Optional["User"]] = relationship(
         back_populates="sessions_created", foreign_keys=[created_by]
+    )
+    publisher: Mapped[Optional["User"]] = relationship(
+        "User",
+        back_populates="sessions_published",
+        foreign_keys=[published_by],
     )
     attempts: Mapped[List["ExamAttempt"]] = relationship(back_populates="session", cascade="all, delete-orphan")
 
