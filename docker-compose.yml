@@ -72,6 +72,12 @@ services:
         condition: service_started
     networks:
       - exam_internal
+   environment:
+      # LLM 配置
+      - LLM_ENABLED=1
+      - LLM_API_BASE=https://openrouter.ai/api/v1  # 或您的网关
+      - LLM_API_KEY=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
+      - LLM_MODEL=anthropic/claude-3.5-sonnet
 
   web:
     restart: unless-stopped
