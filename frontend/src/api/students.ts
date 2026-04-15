@@ -20,3 +20,7 @@ export function importStudents(fd: FormData) {
   return http.post("/v1/students/import", fd, { headers: { "Content-Type": "multipart/form-data" } });
 }
 
+export function lookupStudents(params: Record<string, unknown>) {
+  return http.get("/v1/students/lookup", { params });
+}
+

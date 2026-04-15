@@ -225,7 +225,7 @@ import { listRoles, fetchRolePermissions } from "@/api/roles";
 import { fetchPermissionCatalog, type AuthModulePayload, type CatalogItem } from "@/api/permissions";
 import { useAuthStore } from "@/stores/auth";
 import { systemEmojiRoleKey, type SystemEmojiKey } from "@/assets/emoji/systemEmoji";
-import { listStudents } from "@/api/students";
+import { lookupStudents } from "@/api/students";
 
 const auth = useAuthStore();
 
@@ -295,9 +295,9 @@ async function remoteSearchStudent(q: string) {
     }
     studentLoading.value = true;
     try {
-      const params: Record<string, unknown> = { skip: 0, limit: 20, student_keyword: kw, name_keyword: kw };
+      const params: Record<string, unknown> = { keyword: kw, limit: 20 };
       if (auth.isAdmin && form.enterprise_id) params.enterprise_id = form.enterprise_id;
-      const res = await listStudents(params);
+      const res = await lookupStudents(params);
       const items = (res.data?.items || []) as any[];
       studentOpts.value = items.map((x) => ({ id: x.id, student_no: x.student_no, full_name: x.full_name }));
     } finally {

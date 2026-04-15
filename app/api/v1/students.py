@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy import and_, false, func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, require_permission
+from app.api.deps import get_db, require_any_permission, require_permission
 from app.core.config import get_settings
 from app.core.permissions import is_super_role
 from app.models.enterprise import Enterprise
@@ -98,6 +98,45 @@ def list_students(
         out.enterprise_name = ename
         items.append(out)
     return PageResult[StudentOut](total=int(total), items=items)
+
+
+@router.get("/lookup")
+def lookup_students(
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[
+        User,
+        Depends(
+            require_any_permission(
+                "action.user.create",
+                "action.user.update",
+                "action.role.permission",
+                "list.student",
+            )
+        ),
+    ],
+    keyword: str | None = Query(default=None, description="按学员编号/姓名模糊查询"),
+    enterprise_id: int | None = Query(default=None, description="按所属企业筛选（超管可用）"),
+    limit: int = Query(default=20, ge=1, le=50),
+) -> dict:
+    """用于用户关联学员：返回精简字段，避免依赖学员列表权限。"""
+    kw = (keyword or "").strip()
+    if not kw:
+        return {"items": []}
+    conds: list = [
+        (Student.student_no.like(f"%{kw}%")) | (Student.full_name.like(f"%{kw}%")),
+    ]
+    if enterprise_id is not None and is_super_role(current):
+        conds.append(Student.enterprise_id == enterprise_id)
+    w = and_(*conds) if conds else None
+
+    q = select(Student).order_by(Student.id.desc()).limit(limit)
+    q = _restrict_students_query_by_tenant(q, current)
+    if w is not None:
+        q = q.where(w)
+    rows = db.scalars(q).all()
+    return {
+        "items": [{"id": r.id, "student_no": r.student_no, "full_name": r.full_name} for r in rows],
+    }
 
 
 @router.post("", response_model=StudentOut)
