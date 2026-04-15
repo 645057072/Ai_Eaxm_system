@@ -37,6 +37,13 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _dt_as_utc(dt: datetime) -> datetime:
+    """与数据库存储混用 naive/aware 时统一为 UTC，避免比较报错500。"""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 @router.get("/{attempt_id}", response_model=ExamAttemptOut)
 def get_attempt(
     attempt_id: int,
@@ -83,7 +90,7 @@ def save_answers(
     if sess is None:
         raise HTTPException(status_code=400, detail="场次不存在")
     now = _now()
-    if sess.end_at and now > sess.end_at:
+    if sess.end_at and now > _dt_as_utc(sess.end_at):
         raise HTTPException(status_code=400, detail="考试已结束")
 
     for row in body.answers:
@@ -127,7 +134,7 @@ def stage_answers(
         raise HTTPException(status_code=400, detail="已交卷，不能暂存")
     sess = _assert_practice_session(db, att)
     now = _now()
-    if sess.end_at and now > sess.end_at:
+    if sess.end_at and now > _dt_as_utc(sess.end_at):
         raise HTTPException(status_code=400, detail="考试已结束")
 
     for row in body.answers:
@@ -205,6 +212,9 @@ def submit_attempt(
         raise HTTPException(status_code=400, detail="场次或试卷数据异常")
 
     paper = sess.paper
+    now = _now()
+    if sess.end_at and now > _dt_as_utc(sess.end_at):
+        raise HTTPException(status_code=400, detail="考试已结束")
     items = db.scalars(
         select(ExamPaperItem)
         .options(joinedload(ExamPaperItem.question))
