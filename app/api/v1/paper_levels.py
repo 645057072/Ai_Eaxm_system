@@ -14,7 +14,7 @@ from app.models.paper_level import PaperLevel
 from app.models.user import User
 from app.schemas.common import PageParams, PageResult
 from app.schemas.paper_level import PaperLevelCreate, PaperLevelOut, PaperLevelUpdate
-from app.services.data_scope import ensure_same_enterprise
+from app.services.data_scope import ensure_in_managed_enterprise_scope, get_managed_enterprise_ids
 
 router = APIRouter()
 
@@ -55,7 +55,15 @@ def list_paper_levels(
 
     conds: list = []
     if not is_super_role(current):
-        conds.append(PaperLevel.enterprise_id == current.enterprise_id)
+        managed = get_managed_enterprise_ids(db, current)
+        if not managed:
+            return PageResult[PaperLevelOut](total=0, items=[])
+        if enterprise_id is not None:
+            if enterprise_id not in managed:
+                return PageResult[PaperLevelOut](total=0, items=[])
+            conds.append(PaperLevel.enterprise_id == enterprise_id)
+        else:
+            conds.append(PaperLevel.enterprise_id.in_(managed))
     elif enterprise_id is not None:
         conds.append(PaperLevel.enterprise_id == enterprise_id)
     if kw_like is not None:
@@ -101,7 +109,11 @@ def create_paper_level(
     else:
         if current.enterprise_id is None:
             raise HTTPException(status_code=400, detail="当前账号未关联企业")
-        eid = current.enterprise_id
+        if body.enterprise_id is not None:
+            ensure_in_managed_enterprise_scope(db, current, body.enterprise_id)
+            eid = body.enterprise_id
+        else:
+            eid = current.enterprise_id
     dup = db.scalar(
         select(func.count())
         .select_from(PaperLevel)
@@ -141,7 +153,7 @@ def get_paper_level(
     if row is None:
         raise HTTPException(status_code=404, detail="试卷等级不存在")
     if not is_super_role(current):
-        ensure_same_enterprise(current, row.enterprise_id)
+        ensure_in_managed_enterprise_scope(db, current, row.enterprise_id)
     return _out_from_row(db, row)
 
 
@@ -156,7 +168,7 @@ def update_paper_level(
     if row is None:
         raise HTTPException(status_code=404, detail="试卷等级不存在")
     if not is_super_role(current):
-        ensure_same_enterprise(current, row.enterprise_id)
+        ensure_in_managed_enterprise_scope(db, current, row.enterprise_id)
     if body.level_code is not None:
         code = body.level_code.strip()
         dup = db.scalar(
@@ -194,6 +206,6 @@ def delete_paper_level(
     if row is None:
         raise HTTPException(status_code=404, detail="试卷等级不存在")
     if not is_super_role(current):
-        ensure_same_enterprise(current, row.enterprise_id)
+        ensure_in_managed_enterprise_scope(db, current, row.enterprise_id)
     db.delete(row)
     db.commit()

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, get_db
-from app.core.permissions import get_effective_codes, is_super_role
+from app.core.permissions import get_effective_codes, is_enterprise_scope_admin, is_super_role
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User
 from app.schemas.auth import EnterpriseBrief, LoginRequest, MePasswordChange, RoleBrief, TokenResponse, UserMe
@@ -42,7 +42,8 @@ def me(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
     if not is_super_role(u) and (u.enterprise_id is None or u.enterprise is None):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="用户未关联企业")
-    perms = ["*"] if is_super_role(u) else sorted(get_effective_codes(db, u))
+    # 内置超管与企业侧「XX管理员」均返回 *，前端菜单全量；数据范围仍由接口按企业树过滤
+    perms = ["*"] if (is_super_role(u) or is_enterprise_scope_admin(u)) else sorted(get_effective_codes(db, u))
     ent = (
         EnterpriseBrief(id=u.enterprise.id, name=u.enterprise.name)
         if u.enterprise is not None

@@ -14,7 +14,7 @@ from app.models.exam import ExamAnswer, ExamAttempt, ExamPaperItem, ExamSession
 from app.models.question import Question
 from app.models.user import User
 from app.schemas.attempt import AnswersBatchIn, ExamAttemptOut
-from app.services.data_scope import ensure_same_enterprise
+from app.services.data_scope import ensure_in_managed_enterprise_scope
 from app.services.grading import score_for_question
 
 router = APIRouter(prefix="/attempts", tags=["考试作答"])
@@ -47,7 +47,7 @@ def get_attempt(
     owner = db.get(User, att.user_id)
     if owner is None:
         raise HTTPException(status_code=404, detail="用户不存在")
-    ensure_same_enterprise(current, owner.enterprise_id)
+    ensure_in_managed_enterprise_scope(db, current, owner.enterprise_id)
     return ExamAttemptOut.model_validate(att)
 
 

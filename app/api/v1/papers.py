@@ -32,7 +32,7 @@ from app.schemas.question import QuestionOut
 from app.services.data_scope import (
     assert_paper_in_enterprise,
     assert_question_in_enterprise,
-    ensure_same_enterprise,
+    ensure_in_managed_enterprise_scope,
     restrict_exam_paper_query_by_tenant,
 )
 from app.services.paper_batch import build_disjoint_chunks_for_type, merge_items_in_rule_order
@@ -261,7 +261,7 @@ def list_papers(
 ) -> PageResult[PaperSummary]:
     """本企业试卷列表；支持名称、课程、企业、类型模糊筛选。"""
     data_stmt, ent_course, ent_creator = _paper_list_base_stmt()
-    data_stmt = restrict_exam_paper_query_by_tenant(data_stmt, current)
+    data_stmt = restrict_exam_paper_query_by_tenant(data_stmt, db, current)
     data_stmt = _apply_paper_list_keyword_filters(
         data_stmt, ent_course, ent_creator, title_keyword, course_keyword, enterprise_keyword, paper_type_keyword
     )
@@ -274,7 +274,7 @@ def list_papers(
         .outerjoin(ent_course, Course.enterprise_id == ent_course.id)
         .outerjoin(ent_creator, User.enterprise_id == ent_creator.id)
     )
-    cnt = restrict_exam_paper_query_by_tenant(cnt, current)
+    cnt = restrict_exam_paper_query_by_tenant(cnt, db, current)
     cnt = _apply_paper_list_keyword_filters(
         cnt, ent_course, ent_creator, title_keyword, course_keyword, enterprise_keyword, paper_type_keyword
     )
@@ -320,14 +320,14 @@ def create_papers_batch(
     if course is None:
         raise HTTPException(status_code=404, detail="课程不存在")
     if not is_super_role(current):
-        ensure_same_enterprise(current, course.enterprise_id)
+        ensure_in_managed_enterprise_scope(db, current, course.enterprise_id)
 
     if body.level_id is not None:
         pl = db.get(PaperLevel, body.level_id)
         if pl is None:
             raise HTTPException(status_code=404, detail="试卷等级不存在")
         if not is_super_role(current):
-            ensure_same_enterprise(current, pl.enterprise_id)
+            ensure_in_managed_enterprise_scope(db, current, pl.enterprise_id)
         if pl.enterprise_id != course.enterprise_id:
             raise HTTPException(status_code=400, detail="试卷等级与课程须属同一企业")
 
@@ -445,7 +445,7 @@ def create_paper(
         if course is None:
             raise HTTPException(status_code=404, detail="课程不存在")
         if not is_super_role(current):
-            ensure_same_enterprise(current, course.enterprise_id)
+            ensure_in_managed_enterprise_scope(db, current, course.enterprise_id)
 
     if body.rules and body.course_id is None:
         raise HTTPException(status_code=400, detail="配置了组卷规则时必须指定关联课程")
@@ -455,7 +455,7 @@ def create_paper(
         if pl is None:
             raise HTTPException(status_code=404, detail="试卷等级不存在")
         if not is_super_role(current):
-            ensure_same_enterprise(current, pl.enterprise_id)
+            ensure_in_managed_enterprise_scope(db, current, pl.enterprise_id)
         if course is not None and pl.enterprise_id != course.enterprise_id:
             raise HTTPException(status_code=400, detail="试卷等级与课程须属同一企业")
 
@@ -610,13 +610,13 @@ def update_paper(
         if c is None:
             raise HTTPException(status_code=404, detail="课程不存在")
         if not is_super_role(current):
-            ensure_same_enterprise(current, c.enterprise_id)
+            ensure_in_managed_enterprise_scope(db, current, c.enterprise_id)
     if "level_id" in data and data["level_id"] is not None:
         pl = db.get(PaperLevel, data["level_id"])
         if pl is None:
             raise HTTPException(status_code=404, detail="试卷等级不存在")
         if not is_super_role(current):
-            ensure_same_enterprise(current, pl.enterprise_id)
+            ensure_in_managed_enterprise_scope(db, current, pl.enterprise_id)
         cid = data.get("course_id", p.course_id)
         if cid is not None:
             c2 = db.get(Course, cid)

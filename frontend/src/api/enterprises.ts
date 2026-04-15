@@ -4,6 +4,11 @@ export function listEnterprises(params: { skip?: number; limit?: number; keyword
   return http.get("/v1/enterprises", { params });
 }
 
+/** 企业树（仅当前用户可管理范围） */
+export function fetchEnterpriseTree() {
+  return http.get("/v1/enterprises/tree");
+}
+
 export function createEnterprise(body: Record<string, unknown>) {
   return http.post("/v1/enterprises", body);
 }

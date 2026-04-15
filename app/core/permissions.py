@@ -16,8 +16,20 @@ def is_super_role(user: User) -> bool:
     return bool(user.role and user.role.code == "admin")
 
 
+def is_enterprise_scope_admin(user: User) -> bool:
+    """企业侧管理员：角色名称以「管理员」结尾时，在本企业及下级企业数据范围内拥有全部功能点（数据范围见 data_scope）。"""
+    if user.role is None or not user.role.name:
+        return False
+    # 内置超管单独走 is_super_role，避免名称亦为「管理员」时重复判定
+    if user.role.code == "admin":
+        return False
+    return user.role.name.strip().endswith("管理员")
+
+
 def get_effective_codes(db: Session, user: User) -> Set[str]:
     if is_super_role(user):
+        return set(ALL_CODES)
+    if is_enterprise_scope_admin(user):
         return set(ALL_CODES)
     rows = db.scalars(
         select(RolePermission.permission_code).where(RolePermission.role_id == user.role_id)
@@ -61,6 +73,8 @@ def permission_match(granted: Set[str], code: str) -> bool:
 
 def has_permission(db: Session, user: User, code: str) -> bool:
     if is_super_role(user):
+        return True
+    if is_enterprise_scope_admin(user):
         return True
     granted = get_effective_codes(db, user)
     return permission_match(granted, code)

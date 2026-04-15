@@ -66,6 +66,8 @@ def main() -> None:
         if ent is None:
             db.add(
                 Enterprise(
+                    enterprise_code="E000001",
+                    parent_id=None,
                     name="默认企业",
                     tax_id="DEFAULT000000000000000",
                     license_file_path=None,

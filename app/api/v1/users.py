@@ -15,7 +15,7 @@ from app.models.student import Student
 from app.models.user import Role, User
 from app.schemas.common import PageParams, PageResult
 from app.schemas.user import UserCreate, UserOut, UserUpdate
-from app.services.data_scope import ensure_same_enterprise
+from app.services.data_scope import ensure_in_managed_enterprise_scope, get_managed_enterprise_ids
 
 router = APIRouter()
 
@@ -38,7 +38,14 @@ def _parse_date_any(v: str | None) -> date | None:
         raise HTTPException(status_code=400, detail="日期格式错误，应为 YYYY-MM-DD")
 
 
-def _ensure_student_linkable(db: Session, current: User, student_id: int, enterprise_id: int | None) -> Student:
+def _ensure_student_linkable(
+    db: Session,
+    current: User,
+    student_id: int,
+    enterprise_id: int | None,
+    *,
+    exclude_user_id: int | None = None,
+) -> Student:
     stu = db.get(Student, student_id)
     if stu is None:
         raise HTTPException(status_code=400, detail="关联学员不存在")
@@ -46,8 +53,12 @@ def _ensure_student_linkable(db: Session, current: User, student_id: int, enterp
     if enterprise_id is not None and stu.enterprise_id is not None and stu.enterprise_id != enterprise_id:
         raise HTTPException(status_code=400, detail="学员所属企业与用户所属企业不一致")
     if not is_super_role(current):
-        ensure_same_enterprise(current, stu.enterprise_id)
-    exists = db.scalar(select(func.count()).select_from(User).where(User.student_id == student_id))
+        ensure_in_managed_enterprise_scope(db, current, stu.enterprise_id)
+    # 编辑用户时排除自身，否则「保持原关联学员」会被误判为已被占用
+    conflict_q = select(func.count()).select_from(User).where(User.student_id == student_id)
+    if exclude_user_id is not None:
+        conflict_q = conflict_q.where(User.id != exclude_user_id)
+    exists = db.scalar(conflict_q)
     if exists:
         raise HTTPException(status_code=400, detail="该学员已被其他用户关联")
     return stu
@@ -61,7 +72,7 @@ def list_users(
     keyword: str | None = None,
     enterprise_id: int | None = None,
 ) -> PageResult[UserOut]:
-    """用户列表：非超管仅本企业；超管可查全部，可按 enterprise_id 筛选。"""
+    """用户列表：超管可查全部；企业管理员可查本企业及下级企业；其余用户仅本企业。"""
     stmt = select(func.count()).select_from(User)
     q = select(User).options(joinedload(User.enterprise), joinedload(User.role), joinedload(User.student))
     if is_super_role(current):
@@ -69,10 +80,17 @@ def list_users(
             stmt = stmt.where(User.enterprise_id == enterprise_id)
             q = q.where(User.enterprise_id == enterprise_id)
     else:
-        if current.enterprise_id is None:
+        managed = get_managed_enterprise_ids(db, current)
+        if not managed:
             return PageResult[UserOut](total=0, items=[])
-        stmt = stmt.where(User.enterprise_id == current.enterprise_id)
-        q = q.where(User.enterprise_id == current.enterprise_id)
+        if enterprise_id is not None:
+            if enterprise_id not in managed:
+                return PageResult[UserOut](total=0, items=[])
+            stmt = stmt.where(User.enterprise_id == enterprise_id)
+            q = q.where(User.enterprise_id == enterprise_id)
+        else:
+            stmt = stmt.where(User.enterprise_id.in_(managed))
+            q = q.where(User.enterprise_id.in_(managed))
     if keyword:
         stmt = stmt.where(User.username.like(f"%{keyword}%"))
         q = q.where(User.username.like(f"%{keyword}%"))
@@ -102,7 +120,11 @@ def create_user(
     else:
         if current.enterprise_id is None:
             raise HTTPException(status_code=400, detail="当前账号未关联企业，无法创建用户")
-        eid = current.enterprise_id
+        if body.enterprise_id is not None:
+            ensure_in_managed_enterprise_scope(db, current, body.enterprise_id)
+            eid = body.enterprise_id
+        else:
+            eid = current.enterprise_id
 
     if body.student_id is not None:
         _ensure_student_linkable(db, current, body.student_id, eid)
@@ -140,7 +162,7 @@ def get_user(
     if u is None:
         raise HTTPException(status_code=404, detail="用户不存在")
     if not is_super_role(current):
-        ensure_same_enterprise(current, u.enterprise_id)
+        ensure_in_managed_enterprise_scope(db, current, u.enterprise_id)
     return UserOut.model_validate(u)
 
 
@@ -155,7 +177,7 @@ def update_user(
     if u is None:
         raise HTTPException(status_code=404, detail="用户不存在")
     if not is_super_role(current):
-        ensure_same_enterprise(current, u.enterprise_id)
+        ensure_in_managed_enterprise_scope(db, current, u.enterprise_id)
     if body.full_name is not None:
         u.full_name = body.full_name
     if body.role_id is not None:
@@ -173,7 +195,9 @@ def update_user(
     if body.student_id is not None:
         # 允许传 null 取消关联
         if body.student_id:
-            _ensure_student_linkable(db, current, body.student_id, u.enterprise_id)
+            _ensure_student_linkable(
+                db, current, body.student_id, u.enterprise_id, exclude_user_id=user_id
+            )
             u.student_id = body.student_id
         else:
             u.student_id = None
@@ -289,7 +313,7 @@ def import_users(
 
         # 普通用户导入仅能导入本企业
         if not is_super_role(current):
-            ensure_same_enterprise(current, ent.id)
+            ensure_in_managed_enterprise_scope(db, current, ent.id)
 
         role = db.scalars(select(Role).where(Role.name == role_name)).first()
         if role is None:
@@ -328,6 +352,6 @@ def delete_user(
     if u is None:
         raise HTTPException(status_code=404, detail="用户不存在")
     if not is_super_role(current):
-        ensure_same_enterprise(current, u.enterprise_id)
+        ensure_in_managed_enterprise_scope(db, current, u.enterprise_id)
     db.delete(u)
     db.commit()

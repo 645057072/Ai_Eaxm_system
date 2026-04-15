@@ -17,7 +17,7 @@ from app.schemas.attempt import AttemptStartOut
 from app.schemas.common import PageParams, PageResult
 from app.schemas.exam_take import TakeDataOut, TakeQuestionItem
 from app.schemas.session import ExamSessionCreate, ExamSessionOut, ExamSessionUpdate
-from app.services.data_scope import assert_paper_in_enterprise, assert_session_in_enterprise
+from app.services.data_scope import assert_paper_in_enterprise, assert_session_in_enterprise, session_list_tenant_filter
 
 router = APIRouter()
 
@@ -59,14 +59,16 @@ def list_available_for_student(
         ExamSession.end_at >= now,
     ]
     PaperCreator = aliased(User)
+    # 考生端仅展示本人所属企业的场次，不按企业树扩张
     if not is_super_role(current):
         if current.enterprise_id is None:
             return PageResult[ExamSessionOut](total=0, items=[])
-        tenant_or = or_(
-            Course.enterprise_id == current.enterprise_id,
-            and_(ExamPaper.course_id.is_(None), PaperCreator.enterprise_id == current.enterprise_id),
+        conds.append(
+            or_(
+                Course.enterprise_id == current.enterprise_id,
+                and_(ExamPaper.course_id.is_(None), PaperCreator.enterprise_id == current.enterprise_id),
+            )
         )
-        conds.append(tenant_or)
     total = (
         db.scalar(
             select(func.count())
@@ -108,14 +110,8 @@ def list_sessions(
         .outerjoin(PaperCreator, ExamPaper.created_by == PaperCreator.id)
     )
     if not is_super_role(current):
-        if current.enterprise_id is None:
-            return PageResult[ExamSessionOut](total=0, items=[])
-        stmt = stmt.where(
-            or_(
-                Course.enterprise_id == current.enterprise_id,
-                and_(ExamPaper.course_id.is_(None), PaperCreator.enterprise_id == current.enterprise_id),
-            )
-        )
+        tf = session_list_tenant_filter(PaperCreator, db, current)
+        stmt = stmt.where(tf)
     if status:
         stmt = stmt.where(ExamSession.status == status)
     total = db.scalar(stmt) or 0
@@ -126,12 +122,7 @@ def list_sessions(
         .outerjoin(PaperCreator, ExamPaper.created_by == PaperCreator.id)
     )
     if not is_super_role(current):
-        q = q.where(
-            or_(
-                Course.enterprise_id == current.enterprise_id,
-                and_(ExamPaper.course_id.is_(None), PaperCreator.enterprise_id == current.enterprise_id),
-            )
-        )
+        q = q.where(session_list_tenant_filter(PaperCreator, db, current))
     if status:
         q = q.where(ExamSession.status == status)
     rows = db.scalars(q.offset(page.skip).limit(page.limit).order_by(ExamSession.id.desc())).all()

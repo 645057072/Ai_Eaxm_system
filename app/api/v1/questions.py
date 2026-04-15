@@ -30,7 +30,12 @@ from app.schemas.question import (
     QuestionOut,
     QuestionUpdate,
 )
-from app.services.data_scope import assert_question_in_enterprise, restrict_questions_query_by_tenant
+from app.services.data_scope import (
+    assert_question_in_enterprise,
+    get_managed_enterprise_ids,
+    restrict_questions_query_by_tenant,
+    ensure_in_managed_enterprise_scope,
+)
 from app.services.question_number import allocate_question_no
 from app.services.question_dedup import compute_question_dedup_hash, find_duplicate_question_id
 from app.services.question_import import (
@@ -132,11 +137,11 @@ def list_questions(
     stem_like = _stem_like(stem_keyword)
 
     stmt = select(func.count()).select_from(Question).join(User, Question.created_by == User.id)
-    stmt = restrict_questions_query_by_tenant(stmt, current)
+    stmt = restrict_questions_query_by_tenant(stmt, db, current)
     stmt = _apply_question_list_filters(stmt, q_type, status, course_id, stem_like)
     total = db.scalar(stmt) or 0
     q = select(Question).join(User, Question.created_by == User.id)
-    q = restrict_questions_query_by_tenant(q, current)
+    q = restrict_questions_query_by_tenant(q, db, current)
     q = _apply_question_list_filters(q, q_type, status, course_id, stem_like)
     q = q.options(joinedload(Question.course), joinedload(Question.enterprise))
     rows = db.scalars(q.offset(page.skip).limit(page.limit).order_by(Question.id.desc())).all()
@@ -305,7 +310,8 @@ async def import_questions(
     if course.enterprise_id != enterprise_id:
         raise HTTPException(status_code=400, detail="课程与所属企业不一致")
     if not is_super_role(current):
-        if current.enterprise_id is None or current.enterprise_id != enterprise_id:
+        managed = get_managed_enterprise_ids(db, current)
+        if not managed or enterprise_id not in managed:
             raise HTTPException(status_code=403, detail="无权导入到该企业")
     upload_list: List[UploadFile] = []
     if files:
@@ -496,6 +502,8 @@ def create_question(
     current: Annotated[User, Depends(require_permission("action.question.manage"))],
 ) -> QuestionOut:
     """新增题目。"""
+    if not is_super_role(current):
+        ensure_in_managed_enterprise_scope(db, current, body.enterprise_id)
     if body.status not in ("draft", "published"):
         raise HTTPException(status_code=400, detail="新建题目状态仅可为草稿或已发布，禁用请通过批量或编辑在已发布后再操作")
     if find_duplicate_question_id(
@@ -571,7 +579,7 @@ def get_question_neighbors(
     assert_question_in_enterprise(db, current, question_id)
     stem_like = _stem_like(stem_keyword)
     q = select(Question.id).join(User, Question.created_by == User.id)
-    q = restrict_questions_query_by_tenant(q, current)
+    q = restrict_questions_query_by_tenant(q, db, current)
     q = _apply_question_list_filters(q, q_type, status, course_id, stem_like)
     q = q.order_by(Question.id.desc())
     ids = list(db.scalars(q).all())
@@ -618,6 +626,8 @@ def update_question(
 ) -> QuestionOut:
     obj = assert_question_in_enterprise(db, current, question_id)
     data = body.model_dump(exclude_unset=True)
+    if "enterprise_id" in data and data["enterprise_id"] is not None and not is_super_role(current):
+        ensure_in_managed_enterprise_scope(db, current, int(data["enterprise_id"]))
     if "status" in data:
         _validate_status_transition(obj.status, data["status"])
     stem_u = data.get("stem", obj.stem)

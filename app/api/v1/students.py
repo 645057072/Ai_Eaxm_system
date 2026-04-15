@@ -18,7 +18,7 @@ from app.models.student import Student
 from app.models.user import User
 from app.schemas.common import PageParams, PageResult
 from app.schemas.student import StudentCreate, StudentOut, StudentUpdate
-from app.services.data_scope import ensure_same_enterprise
+from app.services.data_scope import ensure_in_managed_enterprise_scope, get_managed_enterprise_ids
 
 router = APIRouter()
 
@@ -54,12 +54,13 @@ def _normalize_birth_month(v: str | None) -> str | None:
     return s
 
 
-def _restrict_students_query_by_tenant(q, current: User) -> any:
+def _restrict_students_query_by_tenant(q, db: Session, current: User) -> any:
     if is_super_role(current):
         return q
-    if current.enterprise_id is None:
+    managed = get_managed_enterprise_ids(db, current)
+    if not managed:
         return q.where(false())
-    return q.where(Student.enterprise_id == current.enterprise_id)
+    return q.where(Student.enterprise_id.in_(managed))
 
 
 @router.get("", response_model=PageResult[StudentOut])
@@ -79,14 +80,18 @@ def list_students(
         conds.append(Student.student_no.like(f"%{sn}%"))
     if nm:
         conds.append(Student.full_name.like(f"%{nm}%"))
-    if enterprise_id is not None and is_super_role(current):
-        conds.append(Student.enterprise_id == enterprise_id)
+    if enterprise_id is not None:
+        if is_super_role(current):
+            conds.append(Student.enterprise_id == enterprise_id)
+        else:
+            ensure_in_managed_enterprise_scope(db, current, enterprise_id)
+            conds.append(Student.enterprise_id == enterprise_id)
     w = and_(*conds) if conds else None
 
     cnt = select(func.count()).select_from(Student).outerjoin(Enterprise, Student.enterprise_id == Enterprise.id)
     q = select(Student, Enterprise.name).outerjoin(Enterprise, Student.enterprise_id == Enterprise.id)
-    q = _restrict_students_query_by_tenant(q, current)
-    cnt = _restrict_students_query_by_tenant(cnt, current)
+    q = _restrict_students_query_by_tenant(q, db, current)
+    cnt = _restrict_students_query_by_tenant(cnt, db, current)
     if w is not None:
         q = q.where(w)
         cnt = cnt.where(w)
@@ -128,14 +133,14 @@ def lookup_students(
     # 按用户所属企业限定：超管须传 enterprise_id，否则不返回数据，避免跨企业误选
     if enterprise_id is not None:
         if not is_super_role(current):
-            ensure_same_enterprise(current, enterprise_id)
+            ensure_in_managed_enterprise_scope(db, current, enterprise_id)
         conds.append(Student.enterprise_id == enterprise_id)
     elif is_super_role(current):
         return {"items": []}
     w = and_(*conds) if conds else None
 
     q = select(Student).order_by(Student.id.desc()).limit(limit)
-    q = _restrict_students_query_by_tenant(q, current)
+    q = _restrict_students_query_by_tenant(q, db, current)
     if w is not None:
         q = q.where(w)
     rows = db.scalars(q).all()
@@ -151,12 +156,16 @@ def create_student(
     current: Annotated[User, Depends(require_permission("action.student.create"))],
 ) -> StudentOut:
     """新建学员。"""
-    ent = body.enterprise_id if is_super_role(current) else current.enterprise_id
-    if not is_super_role(current):
-        ensure_same_enterprise(current, ent)
-    if is_super_role(current) and ent is None:
-        # 超管未指定则按自身企业（允许为空）
-        ent = current.enterprise_id
+    if is_super_role(current):
+        ent = body.enterprise_id if body.enterprise_id is not None else current.enterprise_id
+    else:
+        if body.enterprise_id is not None:
+            ensure_in_managed_enterprise_scope(db, current, body.enterprise_id)
+            ent = body.enterprise_id
+        else:
+            ent = current.enterprise_id
+        if ent is not None:
+            ensure_in_managed_enterprise_scope(db, current, ent)
 
     obj = Student(
         student_no=body.student_no.strip(),
@@ -188,7 +197,7 @@ def update_student(
         raise HTTPException(status_code=404, detail="学员不存在")
     # 归属校验
     if not is_super_role(current):
-        ensure_same_enterprise(current, obj.enterprise_id)
+        ensure_in_managed_enterprise_scope(db, current, obj.enterprise_id)
     data = body.model_dump(exclude_unset=True)
     if "birth_month" in data:
         data["birth_month"] = _normalize_birth_month(data.get("birth_month"))
@@ -211,7 +220,7 @@ def delete_student(
     if obj is None:
         raise HTTPException(status_code=404, detail="学员不存在")
     if not is_super_role(current):
-        ensure_same_enterprise(current, obj.enterprise_id)
+        ensure_in_managed_enterprise_scope(db, current, obj.enterprise_id)
     db.delete(obj)
     db.commit()
 

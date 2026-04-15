@@ -83,7 +83,11 @@
         <el-form-item v-if="!editId && auth.can('field.user.username')" label="用户名"
           ><el-input v-model="form.username"
         /></el-form-item>
-        <el-form-item v-if="!editId && auth.isAdmin && auth.can('field.user.enterprise')" label="所属企业" required>
+        <el-form-item
+          v-if="!editId && canAssignSubsidiaryEnterprise && auth.can('field.user.enterprise')"
+          label="所属企业"
+          required
+        >
           <el-select v-model="form.enterprise_id" placeholder="请选择企业" filterable style="width: 100%">
             <el-option v-for="e in enterpriseOpts" :key="e.id" :label="e.name" :value="e.id" />
           </el-select>
@@ -216,7 +220,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiErrorMessage } from "@/api/http";
 import { listEnterprises } from "@/api/enterprises";
@@ -228,6 +232,13 @@ import { systemEmojiRoleKey, type SystemEmojiKey } from "@/assets/emoji/systemEm
 import { lookupStudents } from "@/api/students";
 
 const auth = useAuthStore();
+
+/** 全局管理员或企业侧「XX管理员」可为新建用户指定本企业或下级企业 */
+const canAssignSubsidiaryEnterprise = computed(() => {
+  if (auth.isAdmin) return true;
+  const n = (auth.me?.role?.name || "").trim();
+  return n.endsWith("管理员");
+});
 
 function roleKey(row: Record<string, unknown>): SystemEmojiKey {
   const code = (row.role as { code?: string } | undefined)?.code;
@@ -435,7 +446,7 @@ async function load() {
   }
 }
 
-function openCreate() {
+async function openCreate() {
   editId.value = null;
   editEnterpriseName.value = "";
   editEnterpriseId.value = null;
@@ -444,11 +455,24 @@ function openCreate() {
   form.full_name = "";
   form.role_id = roleOpts.value[0]?.id ?? 1;
   form.is_active = true;
-  form.enterprise_id = enterpriseOpts.value[0]?.id ?? auth.me?.enterprise?.id ?? null;
+  form.enterprise_id = auth.me?.enterprise?.id ?? enterpriseOpts.value[0]?.id ?? null;
   form.student_id = null;
   form.enable_date = todayStr();
   form.expire_date = "";
   studentOpts.value = [];
+  if (canAssignSubsidiaryEnterprise.value) {
+    try {
+      const { data } = await listEnterprises({ skip: 0, limit: 500 });
+      enterpriseOpts.value = (data.items || []).map((x: { id: number; name: string }) => ({ id: x.id, name: x.name }));
+      if (!auth.isAdmin && auth.me?.enterprise?.id) {
+        form.enterprise_id = auth.me.enterprise.id;
+      } else if (!form.enterprise_id && enterpriseOpts.value.length) {
+        form.enterprise_id = enterpriseOpts.value[0].id;
+      }
+    } catch {
+      /* 忽略，保存时再提示 */
+    }
+  }
   dlg.value = true;
 }
 
@@ -509,7 +533,7 @@ async function save() {
         return;
       }
       let enterpriseIdNum: number | undefined;
-      if (auth.isAdmin) {
+      if (canAssignSubsidiaryEnterprise.value) {
         const raw = form.enterprise_id;
         const n = raw == null ? NaN : Number(raw);
         if (!Number.isFinite(n) || n < 1) {
@@ -527,7 +551,7 @@ async function save() {
         enable_date: form.enable_date || null,
         expire_date: form.expire_date || null,
       };
-      if (auth.isAdmin && enterpriseIdNum != null) body.enterprise_id = enterpriseIdNum;
+      if (canAssignSubsidiaryEnterprise.value && enterpriseIdNum != null) body.enterprise_id = enterpriseIdNum;
       await createUser(body);
     } else {
       const fn = (form.full_name || "").trim();

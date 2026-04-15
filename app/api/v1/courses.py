@@ -14,7 +14,7 @@ from app.models.enterprise import Enterprise
 from app.models.user import User
 from app.schemas.common import PageParams, PageResult
 from app.schemas.course import CourseCreate, CourseOut, CourseUpdate
-from app.services.data_scope import ensure_same_enterprise
+from app.services.data_scope import ensure_in_managed_enterprise_scope, get_managed_enterprise_ids
 
 router = APIRouter()
 
@@ -30,7 +30,7 @@ def list_courses(
     keyword: str | None = Query(default=None, description="模糊匹配课程名称、讲师、所属企业"),
     enterprise_id: int | None = Query(default=None, description="仅返回该企业下的课程（题库等场景）"),
 ) -> PageResult[CourseOut]:
-    """课程列表：超管全部；其余用户仅本企业。支持 keyword 模糊搜索。"""
+    """课程列表：超管全部；企业管理员本企业及下级；其余用户仅本企业。"""
     if not is_super_role(current) and current.enterprise_id is None:
         return PageResult[CourseOut](total=0, items=[])
 
@@ -39,7 +39,15 @@ def list_courses(
 
     conds: list = []
     if not is_super_role(current):
-        conds.append(Course.enterprise_id == current.enterprise_id)
+        managed = get_managed_enterprise_ids(db, current)
+        if not managed:
+            return PageResult[CourseOut](total=0, items=[])
+        if enterprise_id is not None:
+            if enterprise_id not in managed:
+                return PageResult[CourseOut](total=0, items=[])
+            conds.append(Course.enterprise_id == enterprise_id)
+        else:
+            conds.append(Course.enterprise_id.in_(managed))
     elif enterprise_id is not None:
         conds.append(Course.enterprise_id == enterprise_id)
     if kw_like is not None:
@@ -82,7 +90,11 @@ def create_course(
     else:
         if current.enterprise_id is None:
             raise HTTPException(status_code=400, detail="当前账号未关联企业")
-        eid = current.enterprise_id
+        if body.enterprise_id is not None:
+            ensure_in_managed_enterprise_scope(db, current, body.enterprise_id)
+            eid = body.enterprise_id
+        else:
+            eid = current.enterprise_id
     c = Course(
         name=body.name,
         instructor=body.instructor,
@@ -108,7 +120,7 @@ def get_course(
     if c is None:
         raise HTTPException(status_code=404, detail="课程不存在")
     if not is_super_role(current):
-        ensure_same_enterprise(current, c.enterprise_id)
+        ensure_in_managed_enterprise_scope(db, current, c.enterprise_id)
     return CourseOut.model_validate(c)
 
 
@@ -123,7 +135,7 @@ def update_course(
     if c is None:
         raise HTTPException(status_code=404, detail="课程不存在")
     if not is_super_role(current):
-        ensure_same_enterprise(current, c.enterprise_id)
+        ensure_in_managed_enterprise_scope(db, current, c.enterprise_id)
     if body.name is not None:
         c.name = body.name
     if body.instructor is not None:
@@ -148,6 +160,6 @@ def delete_course(
     if c is None:
         raise HTTPException(status_code=404, detail="课程不存在")
     if not is_super_role(current):
-        ensure_same_enterprise(current, c.enterprise_id)
+        ensure_in_managed_enterprise_scope(db, current, c.enterprise_id)
     db.delete(c)
     db.commit()
