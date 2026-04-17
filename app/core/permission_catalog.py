@@ -21,7 +21,7 @@ CATALOG: List[CatalogItem] = [
     {"code": "menu.exam.qb_center", "name": "题库中心", "label": "考试业务", "kind": "module"},
     {"code": "menu.exam.question_manage", "name": "题库管理", "label": "考试业务", "kind": "menu"},
     {"code": "menu.exam.paper_manage", "name": "试卷管理", "label": "考试业务", "kind": "menu"},
-    {"code": "menu.exam.paper_publish", "name": "试卷发布", "label": "考试业务", "kind": "menu"},
+    {"code": "menu.exam.paper_publish", "name": "场次发布", "label": "考试业务", "kind": "menu"},
     {"code": "module.exam.paper_archive", "name": "试卷档案", "label": "考试业务", "kind": "module"},
     {"code": "menu.exam.sessions", "name": "考试场次", "label": "考试业务", "kind": "module"},
     {"code": "menu.exam.available", "name": "在线考试", "label": "考试业务", "kind": "menu"},

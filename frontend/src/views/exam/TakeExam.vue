@@ -100,8 +100,8 @@ const attemptId = ref(0);
 const submittedTip = ref("");
 const isSubmitting = ref(false);
 const durationMinutes = ref<number | null>(null);
-/** 考试开始时刻（毫秒时间戳），用于剩余时间倒计时 */
-const startedAtMs = ref<number | null>(null);
+/** 本次考试时长起算时刻（毫秒时间戳），与 started_at 区分，用于续考倒计时 */
+const timerStartedAtMs = ref<number | null>(null);
 const remainingSec = ref(0);
 let remainTimer: ReturnType<typeof setInterval> | null = null;
 /** 考试时间耗尽后仅触发一次自动交卷，避免重复提交 */
@@ -159,6 +159,17 @@ async function loadAnswersFromAttempt(aid: number) {
   for (const a of list) {
     answers[a.question_id] = a.user_answer_json;
   }
+}
+
+/** 与服务端 exam_timer_started_at 对齐（练习卷重新开始作答后须刷新倒计时起点） */
+async function syncTimerFromAttempt(aid: number) {
+  const { data } = await getAttempt(aid);
+  const d = data as { exam_timer_started_at?: string; started_at?: string };
+  let t0 = parseStartedAtMs(d.exam_timer_started_at);
+  if (t0 == null) {
+    t0 = parseStartedAtMs(d.started_at);
+  }
+  timerStartedAtMs.value = t0;
 }
 
 async function runRestartCountdown() {
@@ -225,7 +236,7 @@ function coerceDurationMinutes(v: unknown, fallback: unknown): number | null {
 
 function updateRemaining() {
   const dur = durationMinutes.value;
-  const t0 = startedAtMs.value;
+  const t0 = timerStartedAtMs.value;
   if (!dur || t0 == null) return;
   const used = Math.floor((Date.now() - t0) / 1000);
   const prev = remainingSec.value;
@@ -267,7 +278,7 @@ function startRemainCountdown() {
     clearInterval(remainTimer);
     remainTimer = null;
   }
-  if (!durationMinutes.value || startedAtMs.value == null) return;
+  if (!durationMinutes.value || timerStartedAtMs.value == null) return;
   updateRemaining();
   remainTimer = setInterval(updateRemaining, 1000);
 }
@@ -385,15 +396,16 @@ async function boot() {
       status?: string;
       staged?: boolean;
       started_at?: string;
+      timer_started_at?: string;
       duration_minutes?: number;
     };
     attemptId.value = st.attempt_id;
     durationMinutes.value = coerceDurationMinutes(st.duration_minutes, td.duration_minutes);
-    let t0 = parseStartedAtMs(st.started_at);
+    let t0 = parseStartedAtMs(st.timer_started_at);
     if (t0 == null) {
-      t0 = Date.now();
+      t0 = parseStartedAtMs(st.started_at);
     }
-    startedAtMs.value = t0;
+    timerStartedAtMs.value = t0;
     if (st.status === "submitted") {
       submittedTip.value = "本场考试已交卷，将跳转到成绩页。";
       await router.replace("/attempts/" + st.attempt_id);
@@ -431,12 +443,13 @@ async function boot() {
       } catch {
         await restartPracticeAttempt(st.attempt_id);
         initEmptyAnswers();
+        await syncTimerFromAttempt(st.attempt_id);
         await runRestartCountdown();
       }
     } else {
       initEmptyAnswers();
     }
-    startTimerAfterBoot = !!(durationMinutes.value && startedAtMs.value != null);
+    startTimerAfterBoot = !!(durationMinutes.value && timerStartedAtMs.value != null);
   } catch {
     ElMessage.error("无法进入考试（时间、发布状态等）");
     router.replace("/exam/available");

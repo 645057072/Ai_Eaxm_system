@@ -2,7 +2,7 @@
   <div class="fill-height">
     <el-card class="page-list-card">
       <template #header>
-        <div class="page-list-card-title">试卷发布：维护考试场次并发布</div>
+        <div class="page-list-card-title">场次发布：维护考试场次并发布</div>
       </template>
       <div class="page-list-toolbar toolbar">
         <el-button type="success" @click="openCreate">新建场次</el-button>

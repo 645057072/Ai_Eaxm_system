@@ -129,6 +129,11 @@ class ExamAttempt(Base):
     session_id: Mapped[int] = mapped_column(ForeignKey("exam_session.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("sys_user.id", ondelete="CASCADE"), index=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    exam_timer_started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="本次作答考试时长起算时刻（与 started_at 可区分，用于续考倒计时）",
+    )
     submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # in_progress / submitted / timeout
     status: Mapped[str] = mapped_column(String(16), default="in_progress", index=True)

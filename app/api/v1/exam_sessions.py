@@ -54,6 +54,20 @@ def _dt_as_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+def _norm_paper_type(raw: str | None) -> str:
+    """统一试卷类型编码，避免大小写或中文枚举导致限次、倒计时逻辑走错分支。"""
+    if raw is None:
+        return "formal"
+    s = str(raw).strip().lower()
+    if s in ("mock", "模拟", "模拟卷"):
+        return "mock"
+    if s in ("practice", "练习", "练习卷"):
+        return "practice"
+    if s in ("formal", "正式", "正式卷"):
+        return "formal"
+    return s if s else "formal"
+
+
 def _user_display_name(u: User | None) -> str | None:
     if u is None:
         return None
@@ -99,9 +113,16 @@ def _validate_session_business(
 
 
 def _resolve_attempt_limit_for_paper(paper: ExamPaper, raw: int | None) -> int | None:
-    """练习卷不限制；模拟/正式默认 1 次，可手工调大。"""
-    if paper.paper_type == "practice":
+    """练习卷不限制；模拟卷默认每日 5 次（可改）；正式卷默认共 1 次（可改）。"""
+    ptype = _norm_paper_type(paper.paper_type)
+    if ptype == "practice":
         return None
+    if ptype == "mock":
+        if raw is None:
+            return 5
+        if raw < 1:
+            raise HTTPException(status_code=400, detail="次数限制至少为 1")
+        return raw
     if raw is None:
         return 1
     if raw < 1:
@@ -112,7 +133,7 @@ def _resolve_attempt_limit_for_paper(paper: ExamPaper, raw: int | None) -> int |
 def _session_to_out(s: ExamSession) -> ExamSessionOut:
     paper_no = s.paper.paper_no if s.paper is not None else None
     paper_title = s.paper.title if s.paper is not None else None
-    paper_type = s.paper.paper_type if s.paper is not None else None
+    paper_type = _norm_paper_type(s.paper.paper_type) if s.paper is not None else None
     paper_duration = s.paper.duration_minutes if s.paper is not None else None
     return ExamSessionOut(
         id=s.id,
@@ -490,7 +511,7 @@ def publish_session(
 
 
 def _assert_unpublish_not_blocked_by_attempts(db: Session, session_id: int, s: ExamSession) -> None:
-    """已发布场次若已有考生作答（试卷发布侧已形成关联），禁止反发布。"""
+    """已发布场次若已有考生作答，禁止反发布（场次与作答已关联）。"""
     if s.status != "published":
         return
     n = (
@@ -502,7 +523,7 @@ def _assert_unpublish_not_blocked_by_attempts(db: Session, session_id: int, s: E
     if int(n) > 0:
         raise HTTPException(
             status_code=400,
-            detail="该场次已发布且存在考生作答记录，与试卷发布业务已关联，禁止反发布",
+            detail="该考试场次已发布且存在考生作答记录，与场次业务已关联，禁止反发布",
         )
 
 
@@ -591,7 +612,7 @@ def get_take_data(
         session_id=s.id,
         title=s.title,
         paper_id=paper.id,
-        paper_type=paper.paper_type or "formal",
+        paper_type=_norm_paper_type(paper.paper_type),
         duration_minutes=paper.duration_minutes,
         questions=items,
     )
@@ -634,7 +655,14 @@ def start_attempt(
     ).first()
     if existing_in_progress:
         dur = s.paper.duration_minutes if s.paper else 60
-        ptype = (s.paper.paper_type or "formal") if s.paper else "formal"
+        ptype = _norm_paper_type(s.paper.paper_type if s.paper else None)
+        tstart = getattr(existing_in_progress, "exam_timer_started_at", None)
+        if tstart is None:
+            existing_in_progress.exam_timer_started_at = _dt_as_utc(existing_in_progress.started_at)
+            db.commit()
+            db.refresh(existing_in_progress)
+            tstart = existing_in_progress.exam_timer_started_at
+        assert tstart is not None
         ensure_exam_candidate_for_session(db, s, current, existing_in_progress.id)
         db.commit()
         return AttemptStartOut(
@@ -643,13 +671,14 @@ def start_attempt(
             paper_id=s.paper_id,
             duration_minutes=dur,
             started_at=existing_in_progress.started_at,
+            timer_started_at=tstart,
             status=existing_in_progress.status,
             paper_type=ptype,
             staged=bool(getattr(existing_in_progress, "staged", False)),
         )
 
-    ptype = (s.paper.paper_type or "formal") if s.paper else "formal"
-    # 作答次数规则：practice 不限；mock 每日 5 次（不累计）；formal 1 次
+    ptype = _norm_paper_type(s.paper.paper_type if s.paper else None)
+    # 作答次数规则：practice 不限；mock 每日上限为场次 attempt_limit（默认5）；formal 共 1 次
     if ptype == "formal":
         cnt = (
             db.scalar(
@@ -663,6 +692,7 @@ def start_attempt(
         if int(cnt) >= 1:
             raise HTTPException(status_code=400, detail="正式考试仅允许作答 1 次")
     elif ptype == "mock":
+        daily_cap = s.attempt_limit if s.attempt_limit is not None else 5
         today = _now().date()
         cnt = (
             db.scalar(
@@ -676,24 +706,36 @@ def start_attempt(
             )
             or 0
         )
-        if int(cnt) >= 5:
-            raise HTTPException(status_code=400, detail="模拟考试每日最多作答 5 次")
+        if int(cnt) >= daily_cap:
+            raise HTTPException(
+                status_code=400,
+                detail=f"模拟考试每日最多作答 {daily_cap} 次",
+            )
     else:
         # practice：不限制
         pass
-    att = ExamAttempt(session_id=session_id, user_id=current.id, status="in_progress")
+    t0 = _now()
+    att = ExamAttempt(
+        session_id=session_id,
+        user_id=current.id,
+        status="in_progress",
+        started_at=t0,
+        exam_timer_started_at=t0,
+    )
     db.add(att)
     db.commit()
     db.refresh(att)
     ensure_exam_candidate_for_session(db, s, current, att.id)
     db.commit()
     dur = s.paper.duration_minutes if s.paper else 60
+    ts = att.exam_timer_started_at or att.started_at
     return AttemptStartOut(
         attempt_id=att.id,
         session_id=s.id,
         paper_id=s.paper_id,
         duration_minutes=dur,
         started_at=att.started_at,
+        timer_started_at=ts,
         status=att.status,
         paper_type=ptype,
         staged=False,

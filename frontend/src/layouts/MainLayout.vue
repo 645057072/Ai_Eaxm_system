@@ -27,7 +27,7 @@
             <span class="menu-item-inner"><AppEmoji name="paperManage" size="sm" decorative />试卷管理</span>
           </el-menu-item>
           <el-menu-item v-if="auth.can('menu.exam.paper_publish')" index="/papers/publish">
-            <span class="menu-item-inner"><AppEmoji name="publish" size="sm" decorative />试卷发布</span>
+            <span class="menu-item-inner"><AppEmoji name="publish" size="sm" decorative />场次发布</span>
           </el-menu-item>
         </el-sub-menu>
         <el-menu-item v-if="auth.can('menu.exam.sessions')" index="/sessions">

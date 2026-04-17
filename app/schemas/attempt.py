@@ -31,6 +31,7 @@ class ExamAttemptOut(BaseModel):
     session_id: int
     user_id: int
     started_at: datetime
+    exam_timer_started_at: Optional[datetime] = None
     submitted_at: Optional[datetime] = None
     status: str
     staged: bool = False
@@ -47,6 +48,7 @@ class AttemptStartOut(BaseModel):
     paper_id: int
     duration_minutes: int
     started_at: datetime
+    timer_started_at: datetime
     status: Optional[str] = None  # in_progress / submitted
     paper_type: str = "formal"
     staged: bool = False

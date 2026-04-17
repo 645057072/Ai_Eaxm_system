@@ -156,7 +156,7 @@ const moduleOpts = [
 
 const menuOpts = [
   { value: "menu.exam.paper_manage", label: "试卷管理" },
-  { value: "menu.exam.paper_publish", label: "试卷发布" },
+  { value: "menu.exam.paper_publish", label: "场次发布" },
   { value: "menu.exam.sessions", label: "考试场次" },
   { value: "menu.exam.question_manage", label: "题库管理" },
   { value: "menu.system.print", label: "打印设置" },

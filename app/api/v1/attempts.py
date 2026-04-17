@@ -182,6 +182,8 @@ def restart_practice_attempt(
     _assert_practice_session(db, att)
     db.execute(delete(ExamAnswer).where(ExamAnswer.attempt_id == attempt_id))
     att.staged = False
+    # 练习卷重新开始作答时，考试时长从当前时刻重新起算
+    att.exam_timer_started_at = _now()
     db.commit()
     att2 = db.scalars(
         select(ExamAttempt).options(joinedload(ExamAttempt.answers)).where(ExamAttempt.id == attempt_id)
