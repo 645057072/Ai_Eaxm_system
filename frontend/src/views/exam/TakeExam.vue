@@ -210,17 +210,34 @@ function fmtRemain(sec: number) {
   return `${hh}:${mm}:${ss}`;
 }
 
-/** 解析后端返回的开始时间（兼容 ISO、MySQL 无时区字符串等） */
+/** 是否含 ISO 时区后缀（Z 或 ±hh:mm） */
+function hasExplicitTimeZone(s: string): boolean {
+  return /[zZ]$|[+-]\d{2}:\d{2}$/.test(s.trim());
+}
+
+/**
+ * 解析后端返回的开始时刻（毫秒）。
+ * 后端存 UTC，MySQL/Pydantic 常序列化为无时区 ISO；浏览器会当作「本地时间」解析，在东八区等会导致时间偏早约 8 小时，
+ * 剩余时间瞬间为 0 并误触自动交卷。无时区后缀时按 UTC 解析。
+ */
 function parseStartedAtMs(raw: unknown): number | null {
   if (raw == null) return null;
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   const s0 = String(raw).trim();
   if (!s0) return null;
+
+  const isoNoTz = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(\.\d+)?$/.exec(s0);
+  if (isoNoTz && !hasExplicitTimeZone(s0)) {
+    const frac = isoNoTz[3] || "";
+    const tUtc = new Date(`${isoNoTz[1]}T${isoNoTz[2]}${frac}Z`).getTime();
+    if (Number.isFinite(tUtc)) return tUtc;
+  }
+
   let t = new Date(s0).getTime();
   if (Number.isFinite(t)) return t;
   const m = s0.match(/^(\d{4}-\d{2}-\d{2})[\sT](\d{2}:\d{2}:\d{2})/);
   if (m) {
-    t = new Date(`${m[1]}T${m[2]}`).getTime();
+    t = new Date(`${m[1]}T${m[2]}Z`).getTime();
     if (Number.isFinite(t)) return t;
   }
   return null;
