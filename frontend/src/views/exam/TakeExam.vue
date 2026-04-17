@@ -100,9 +100,12 @@ const attemptId = ref(0);
 const submittedTip = ref("");
 const isSubmitting = ref(false);
 const durationMinutes = ref<number | null>(null);
-const startedAtIso = ref<string>("");
+/** 考试开始时刻（毫秒时间戳），用于剩余时间倒计时 */
+const startedAtMs = ref<number | null>(null);
 const remainingSec = ref(0);
 let remainTimer: ReturnType<typeof setInterval> | null = null;
+/** 考试时间耗尽后仅触发一次自动交卷，避免重复提交 */
+const autoSubmitDone = ref(false);
 const formalLocked = ref(false);
 const obfuscate = ref(false);
 let obfuscateTimer: ReturnType<typeof setTimeout> | null = null;
@@ -196,13 +199,77 @@ function fmtRemain(sec: number) {
   return `${hh}:${mm}:${ss}`;
 }
 
+/** 解析后端返回的开始时间（兼容 ISO、MySQL 无时区字符串等） */
+function parseStartedAtMs(raw: unknown): number | null {
+  if (raw == null) return null;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  const s0 = String(raw).trim();
+  if (!s0) return null;
+  let t = new Date(s0).getTime();
+  if (Number.isFinite(t)) return t;
+  const m = s0.match(/^(\d{4}-\d{2}-\d{2})[\sT](\d{2}:\d{2}:\d{2})/);
+  if (m) {
+    t = new Date(`${m[1]}T${m[2]}`).getTime();
+    if (Number.isFinite(t)) return t;
+  }
+  return null;
+}
+
+function coerceDurationMinutes(v: unknown, fallback: unknown): number | null {
+  const a = Number(v);
+  if (Number.isFinite(a) && a > 0) return Math.floor(a);
+  const b = Number(fallback);
+  if (Number.isFinite(b) && b > 0) return Math.floor(b);
+  return null;
+}
+
 function updateRemaining() {
-  if (!durationMinutes.value || !startedAtIso.value) return;
-  const st = new Date(startedAtIso.value).getTime();
-  if (!Number.isFinite(st)) return;
-  const now = Date.now();
-  const used = Math.floor((now - st) / 1000);
-  remainingSec.value = Math.max(0, durationMinutes.value * 60 - used);
+  const dur = durationMinutes.value;
+  const t0 = startedAtMs.value;
+  if (!dur || t0 == null) return;
+  const used = Math.floor((Date.now() - t0) / 1000);
+  const prev = remainingSec.value;
+  const next = Math.max(0, dur * 60 - used);
+  remainingSec.value = next;
+  if (next > 0) return;
+  if (autoSubmitDone.value || isSubmitting.value || !attemptId.value || loading.value) return;
+  void autoSubmitOnTimeout();
+}
+
+/** 考试时长用尽：静默保存并交卷（不弹确认、不等待人工倒计时） */
+async function autoSubmitOnTimeout() {
+  if (autoSubmitDone.value || isSubmitting.value || !attemptId.value) return;
+  autoSubmitDone.value = true;
+  if (remainTimer) {
+    clearInterval(remainTimer);
+    remainTimer = null;
+  }
+  isSubmitting.value = true;
+  try {
+    ElMessage.warning("考试时间已到，系统正在自动交卷…");
+    const list = collectAnswersPayload();
+    await saveAnswers(attemptId.value, list);
+    await submitAttempt(attemptId.value);
+    ElMessage.success("已自动交卷");
+    setFormalLock(false);
+    await router.replace("/attempts/" + attemptId.value);
+  } catch (e) {
+    autoSubmitDone.value = false;
+    ElMessage.error("自动交卷失败，请尽快手动交卷");
+    console.error(e);
+  } finally {
+    isSubmitting.value = false;
+  }
+}
+
+function startRemainCountdown() {
+  if (remainTimer) {
+    clearInterval(remainTimer);
+    remainTimer = null;
+  }
+  if (!durationMinutes.value || startedAtMs.value == null) return;
+  updateRemaining();
+  remainTimer = setInterval(updateRemaining, 1000);
 }
 
 function setFormalLock(on: boolean) {
@@ -302,6 +369,7 @@ function bindNoCopyGuards() {
 
 async function boot() {
   loading.value = true;
+  let startTimerAfterBoot = false;
   try {
     const td = (await getTakeData(sessionId)).data as {
       title: string;
@@ -320,13 +388,12 @@ async function boot() {
       duration_minutes?: number;
     };
     attemptId.value = st.attempt_id;
-    startedAtIso.value = String(st.started_at || "");
-    durationMinutes.value = typeof st.duration_minutes === "number" ? st.duration_minutes : null;
-    if (durationMinutes.value && startedAtIso.value) {
-      updateRemaining();
-      if (remainTimer) clearInterval(remainTimer);
-      remainTimer = setInterval(updateRemaining, 1000);
+    durationMinutes.value = coerceDurationMinutes(st.duration_minutes, td.duration_minutes);
+    let t0 = parseStartedAtMs(st.started_at);
+    if (t0 == null) {
+      t0 = Date.now();
     }
+    startedAtMs.value = t0;
     if (st.status === "submitted") {
       submittedTip.value = "本场考试已交卷，将跳转到成绩页。";
       await router.replace("/attempts/" + st.attempt_id);
@@ -369,11 +436,15 @@ async function boot() {
     } else {
       initEmptyAnswers();
     }
+    startTimerAfterBoot = !!(durationMinutes.value && startedAtMs.value != null);
   } catch {
     ElMessage.error("无法进入考试（时间、发布状态等）");
     router.replace("/exam/available");
   } finally {
     loading.value = false;
+    if (startTimerAfterBoot) {
+      startRemainCountdown();
+    }
   }
 }
 

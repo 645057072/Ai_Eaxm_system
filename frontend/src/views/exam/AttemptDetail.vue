@@ -7,7 +7,7 @@
       </div>
     </template>
     <template v-if="att">
-      <p class="meta-line">状态：{{ att.status }}，总分：{{ att.total_score ?? "-" }}</p>
+      <p class="meta-line">状态：{{ attemptStatusLabel(att.status) }}，总分：{{ att.total_score ?? "-" }}</p>
       <div v-if="att.practice_report" class="report-wrap">
         <h3 class="report-title">练习报告</h3>
         <pre class="practice-report">{{ att.practice_report }}</pre>
@@ -18,8 +18,8 @@
         <el-table-column label="得分" width="90">
           <template #default="{ row }">{{ row.score_awarded ?? "-" }}</template>
         </el-table-column>
-        <el-table-column label="作答">
-          <template #default="{ row }">{{ JSON.stringify(row.user_answer_json) }}</template>
+        <el-table-column label="作答" min-width="200" show-overflow-tooltip>
+          <template #default="{ row }">{{ formatUserAnswer(row.user_answer_json) }}</template>
         </el-table-column>
       </el-table>
     </template>
@@ -36,6 +36,34 @@ const route = useRoute();
 const id = Number(route.params.id);
 const loading = ref(false);
 const att = ref<Record<string, unknown> | null>(null);
+
+function attemptStatusLabel(s: unknown): string {
+  const key = String(s || "").trim();
+  const m: Record<string, string> = {
+    submitted: "已提交",
+    in_progress: "作答中",
+    timeout: "已超时",
+  };
+  return m[key] || key || "—";
+}
+
+/** 将作答 JSON 转为卷面可读中文/选项展示 */
+function formatUserAnswer(val: unknown): string {
+  if (val === true || val === "true") return "正确";
+  if (val === false || val === "false") return "错误";
+  if (val == null || val === "") return "—";
+  if (Array.isArray(val)) {
+    const arr = val
+      .map((x) => String(x).trim().toUpperCase())
+      .filter(Boolean);
+    arr.sort();
+    return arr.length ? arr.join("、") : "—";
+  }
+  if (typeof val === "object") {
+    return JSON.stringify(val);
+  }
+  return String(val);
+}
 
 async function load() {
   loading.value = true;
