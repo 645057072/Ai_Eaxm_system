@@ -2,7 +2,7 @@
   <el-card v-loading="loading" class="take-exam-card" :class="{ obfuscate: obfuscate }">
     <template #header>
       <div class="exam-hdr">
-        <div class="exam-hdr-title">{{ title }}</div>
+        <h2 class="exam-hdr-title">{{ title }}</h2>
         <div class="exam-hdr-actions">
           <div v-if="durationMinutes" class="exam-timer">
             <span class="timer-item">考试时间：{{ durationMinutes }} 分钟</span>
@@ -528,12 +528,14 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* 低于系统顶栏 z-index(100)，高于题目卡片，避免与导航栏错误叠层 */
 .take-exam-card :deep(.el-card__header) {
   padding: 12px 16px;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 40;
   background: #fff;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
 }
 .take-exam-card {
   overflow: visible;
@@ -541,43 +543,60 @@ onUnmounted(() => {
 .take-exam-card :deep(.el-card__body) {
   overflow: visible;
 }
+/* 标题独占一行可换行；计时与按钮下一行右对齐，避免长标题与计时器重叠 */
 .exam-hdr {
   display: flex;
-  align-items: center;
-  min-height: 40px;
-  position: relative;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
 }
 .exam-hdr-title {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: 50%;
-  text-align: center;
+  margin: 0;
   font-weight: 600;
   font-size: 16px;
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  pointer-events: none;
+  line-height: 1.45;
+  color: #0f172a;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+/* 宽屏：标题与操作区同一行，标题自适应剩余空间，操作区不挤压换行 */
+@media (min-width: 960px) {
+  .exam-hdr {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px 16px;
+  }
+  .exam-hdr-title {
+    flex: 1 1 200px;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .exam-hdr-actions {
+    flex: 0 1 auto;
+    justify-content: flex-end;
+  }
 }
 .exam-hdr-actions {
-  margin-left: auto;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  z-index: 1;
+  justify-content: flex-end;
 }
 .exam-timer {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
-  margin-right: 6px;
+  row-gap: 4px;
   font-size: 13px;
   color: #334155;
-  padding: 0 10px;
-  height: 32px;
+  padding: 6px 10px;
+  min-height: 32px;
+  box-sizing: border-box;
   border: 1px solid #e2e8f0;
   background: #f8fafc;
   border-radius: 6px;
@@ -590,6 +609,8 @@ onUnmounted(() => {
   padding: 12px;
   background: #fff;
   border: 1px solid #eee;
+  /* 粘性考试头栏遮挡题干时，滚动锚点留出顶部空隙 */
+  scroll-margin-top: 120px;
 }
 .qhead {
   margin-bottom: 8px;
