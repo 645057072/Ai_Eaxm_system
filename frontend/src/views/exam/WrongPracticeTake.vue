@@ -18,20 +18,20 @@
       <div v-if="!submitted">
         <template v-if="q.q_type === 'judge'">
           <el-radio-group v-model="ans">
-            <el-radio :label="true">正确</el-radio>
-            <el-radio :label="false">错误</el-radio>
+            <el-radio :value="true">正确</el-radio>
+            <el-radio :value="false">错误</el-radio>
           </el-radio-group>
         </template>
         <template v-else-if="q.q_type === 'single'">
           <el-radio-group v-model="ans">
-            <el-radio v-for="opt in normOptions(q.options_json)" :key="opt.key" :label="opt.key"
+            <el-radio v-for="opt in normOptions(q.options_json)" :key="opt.key" :value="opt.key"
               >{{ opt.key }}. {{ opt.text }}</el-radio
             >
           </el-radio-group>
         </template>
         <template v-else-if="q.q_type === 'multiple'">
           <el-checkbox-group v-model="ansMulti">
-            <el-checkbox v-for="opt in normOptions(q.options_json)" :key="opt.key" :label="opt.key"
+            <el-checkbox v-for="opt in normOptions(q.options_json)" :key="opt.key" :value="opt.key"
               >{{ opt.key }}. {{ opt.text }}</el-checkbox
             >
           </el-checkbox-group>

@@ -29,18 +29,18 @@
       </div>
       <template v-if="q.q_type === 'judge'">
         <el-radio-group v-model="answers[q.question_id]">
-          <el-radio :label="true">正确</el-radio>
-          <el-radio :label="false">错误</el-radio>
+          <el-radio :value="true">正确</el-radio>
+          <el-radio :value="false">错误</el-radio>
         </el-radio-group>
       </template>
       <template v-else-if="q.q_type === 'single'">
         <el-radio-group v-model="answers[q.question_id]">
-          <el-radio v-for="opt in normOptions(q)" :key="opt.key" :label="opt.key">{{ opt.key }}. {{ opt.text }}</el-radio>
+          <el-radio v-for="opt in normOptions(q)" :key="opt.key" :value="opt.key">{{ opt.key }}. {{ opt.text }}</el-radio>
         </el-radio-group>
       </template>
       <template v-else-if="q.q_type === 'multiple'">
         <el-checkbox-group v-model="answers[q.question_id]">
-          <el-checkbox v-for="opt in normOptions(q)" :key="opt.key" :label="opt.key">{{ opt.key }}. {{ opt.text }}</el-checkbox>
+          <el-checkbox v-for="opt in normOptions(q)" :key="opt.key" :value="opt.key">{{ opt.key }}. {{ opt.text }}</el-checkbox>
         </el-checkbox-group>
       </template>
       <template v-else>
@@ -255,8 +255,8 @@ function updateRemaining() {
   const dur = durationMinutes.value;
   const t0 = timerStartedAtMs.value;
   if (!dur || t0 == null) return;
-  const used = Math.floor((Date.now() - t0) / 1000);
-  const prev = remainingSec.value;
+  // 起算时间略晚于客户端时钟时 used 为负，按 0 处理，避免误判已超时
+  const used = Math.max(0, Math.floor((Date.now() - t0) / 1000));
   const next = Math.max(0, dur * 60 - used);
   remainingSec.value = next;
   if (next > 0) return;
