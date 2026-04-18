@@ -143,35 +143,79 @@
       });
     }
 
+    /** 按已注册 china 地图补全所有省级区域，无数据为 0；否则未出现在 mapData 中的省会用默认浅灰，visualMap 无法着色 */
+    function fillChinaProvinces(mapData) {
+      var info = echarts.getMap('china');
+      if (!info || !info.geoJson || !info.geoJson.features) return mapData || [];
+      var byName = {};
+      (mapData || []).forEach(function (d) {
+        if (d && d.name != null) byName[d.name] = d.value;
+      });
+      var out = [];
+      info.geoJson.features.forEach(function (f) {
+        var n = f.properties && f.properties.name;
+        if (!n) return;
+        out.push({ name: n, value: Object.prototype.hasOwnProperty.call(byName, n) ? byName[n] : 0 });
+      });
+      return out;
+    }
+
     function applyMap(mapData, intranetHits) {
+      var filled = fillChinaProvinces(mapData);
+      var vals = filled.map(function (d) { return d.value; });
+      var vmax = vals.length ? Math.max.apply(null, vals) : 0;
+      vmax = Math.max(vmax, 1);
+
       chartMap.setOption({
         backgroundColor: 'transparent',
         tooltip: {
           trigger: 'item',
           formatter: function (p) {
-            if (p.data && p.data.name) return p.data.name + '：' + p.data.value + ' 人次';
-            return p.name + '：' + (p.value || 0);
+            if (p.data && p.data.name != null) return p.data.name + '：' + (p.data.value != null ? p.data.value : 0) + ' 人次';
+            return (p.name || '') + '：' + (p.value != null ? p.value : 0);
           }
         },
         visualMap: {
+          type: 'continuous',
+          seriesIndex: 0,
           min: 0,
-          max: (function () {
-            var vals = (mapData || []).map(function (d) { return d.value; });
-            return vals.length ? Math.max.apply(null, vals.concat([10])) : 10;
-          })(),
+          max: vmax,
           text: ['高', '低'],
           realtime: true,
           calculable: true,
-          inRange: { color: ['#0c2c54', '#1565c0', '#4fc3f7', '#fff176'] },
-          textStyle: baseTextStyle()
+          left: 'right',
+          bottom: 48,
+          itemWidth: 14,
+          itemHeight: 120,
+          padding: [8, 12],
+          backgroundColor: 'rgba(10, 22, 40, 0.75)',
+          borderColor: 'rgba(77, 163, 255, 0.45)',
+          borderWidth: 1,
+          inRange: {
+            color: ['#1a237e', '#283593', '#3949ab', '#1e88e5', '#039be5', '#00acc1', '#26a69a', '#9ccc65', '#d4e157', '#ffee58', '#ffca28', '#ff9800', '#f4511e']
+          },
+          textStyle: { color: '#b8d4f0', fontSize: 11 }
         },
         series: [{
           name: '参考人次',
           type: 'map',
           map: 'china',
           roam: false,
-          emphasis: { label: { show: true, color: '#fff' }, itemStyle: { areaColor: '#ff7043' } },
-          data: mapData
+          zoom: 1.05,
+          scaleLimit: { min: 0.8, max: 2 },
+          label: { show: false, color: '#cfe8ff', fontSize: 10 },
+          itemStyle: {
+            borderColor: 'rgba(100, 181, 246, 0.85)',
+            borderWidth: 0.9,
+            shadowColor: 'rgba(0, 0, 0, 0.35)',
+            shadowBlur: 6
+          },
+          emphasis: {
+            label: { show: true, color: '#fff', fontSize: 11, fontWeight: 'bold' },
+            itemStyle: { areaColor: '#ff8f00', borderColor: '#fffde7', borderWidth: 1.2 }
+          },
+          selectedMode: false,
+          data: filled
         }],
         graphic: intranetHits > 0 ? [{
           type: 'text',
