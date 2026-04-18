@@ -12,10 +12,12 @@ _PKG_DIR = Path(__file__).resolve().parent
 
 
 def create_app() -> Flask:
+    # 静态资源挂在 /bi/static，便于与 Nginx location ^~ /bi/ 一并反代，避免与前端根路径 /static 冲突
     app = Flask(
         __name__,
         template_folder=str(_PKG_DIR / "templates"),
         static_folder=str(_PKG_DIR / "static"),
+        static_url_path="/bi/static",
     )
 
     @app.get("/bi/screen")

@@ -318,7 +318,7 @@
       chartStudentScore.resize();
     }
 
-    fetch('https://cdn.jsdelivr.net/npm/echarts@5/map/json/china.json')
+    fetch('/bi/static/geo/china.json')
       .then(function (r) { return r.json(); })
       .then(function (geo) {
         echarts.registerMap('china', geo);
