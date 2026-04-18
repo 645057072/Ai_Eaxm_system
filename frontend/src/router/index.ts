@@ -190,7 +190,7 @@ const router = createRouter({
         {
           path: "bi",
           name: "bi-center",
-          component: () => import("@/views/placeholder/ModulePlaceholder.vue"),
+          component: () => import("@/views/bi/BiScreen.vue"),
           meta: { permission: "menu.bi", title: "数智BI中心" },
         },
       ],
