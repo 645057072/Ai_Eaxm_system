@@ -76,7 +76,25 @@ services:
     networks:
       - exam_internal
 
- 
+  # 数智 BI 大屏（Flask + ECharts）；与 api 同镜像 Python 3.11，避免宿主机 python3.6 无法运行 SQLAlchemy 2 / 类型注解
+  bi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-pypi.tuna.tsinghua.edu.cn}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://exam:exam@mysql:3306/exam_db?charset=utf8mb4}
+    ports:
+      - "5001:5001"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - exam_internal
+    command: ["python", "-m", "app.bi.flask_app"]
 
   web:
     restart: unless-stopped

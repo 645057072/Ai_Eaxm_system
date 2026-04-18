@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 """大屏数据聚合：企业树范围、IP 省份解析、图表用序列。"""
 
-from __future__ import annotations
-
 import ipaddress
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, Dict, List, Optional, Union
 
 import httpx
 from sqlalchemy import func, select
@@ -25,7 +23,7 @@ _MAX_IP_LOOKUP = 120
 _SCORE_BINS = ("0-59", "60-69", "70-79", "80-89", "90-100")
 
 
-def _score_bin(score: Decimal | float | int | None) -> str | None:
+def _score_bin(score: Optional[Union[Decimal, float, int]]) -> Optional[str]:
     if score is None:
         return None
     try:
@@ -77,7 +75,7 @@ def _ip_kind(ip: str) -> str:
     return "public"
 
 
-def resolve_ip_province(ip: str, cache: dict[str, str], client: httpx.Client) -> str:
+def resolve_ip_province(ip: str, cache: Dict[str, str], client: httpx.Client) -> str:
     """公网 IP 调用在线库解析省级行政区；内网归并为「内网」。"""
     ip = ip.strip()
     if not ip:
@@ -103,7 +101,7 @@ def resolve_ip_province(ip: str, cache: dict[str, str], client: httpx.Client) ->
     return short
 
 
-def get_default_enterprise_id(db: Session) -> int | None:
+def get_default_enterprise_id(db: Session) -> Optional[int]:
     """未传 enterprise_id 时取一条顶级企业作为默认展示范围。"""
     row = db.scalars(select(Enterprise.id).where(Enterprise.parent_id.is_(None)).order_by(Enterprise.id).limit(1)).first()
     return int(row) if row is not None else None
@@ -114,7 +112,7 @@ def get_enterprise_banner_name(db: Session, enterprise_id: int) -> str:
     return row.name if row is not None else "未知企业"
 
 
-def build_dashboard_payload(db: Session, root_enterprise_id: int) -> dict[str, Any]:
+def build_dashboard_payload(db: Session, root_enterprise_id: int) -> Dict[str, Any]:
     """生成大屏 JSON：含5 组图表所需数据结构。"""
     ent_ids = collect_descendant_enterprise_ids(db, root_enterprise_id)
     ent_list = list(ent_ids)
@@ -140,9 +138,9 @@ def build_dashboard_payload(db: Session, root_enterprise_id: int) -> dict[str, A
         .limit(_MAX_IP_LOOKUP)
     ).all()
 
-    province_counts: dict[str, int] = defaultdict(int)
+    province_counts: Dict[str, int] = defaultdict(int)
     intranet_hits = 0
-    ip_cache: dict[str, str] = {}
+    ip_cache: Dict[str, str] = {}
     with httpx.Client(headers={"User-Agent": "AiExam-BI/1.0"}) as hclient:
         for ip, row_cnt in ip_counts_rows:
             ip_s = str(ip).strip()
@@ -162,8 +160,8 @@ def build_dashboard_payload(db: Session, root_enterprise_id: int) -> dict[str, A
     # 近 7 日每日 distinct参考人数
     today = datetime.now(timezone.utc).date()
     start_d = today - timedelta(days=6)
-    daily_labels: list[str] = []
-    daily_counts: list[int] = []
+    daily_labels: List[str] = []
+    daily_counts: List[int] = []
     for i in range(7):
         d = start_d + timedelta(days=i)
         daily_labels.append(d.strftime("%m-%d"))
@@ -201,7 +199,7 @@ def build_dashboard_payload(db: Session, root_enterprise_id: int) -> dict[str, A
     ).all()
     top_courses = [str(r[0]) for r in course_names_rows if r[0]]
 
-    course_score_matrix: dict[str, list[int]] = {c: [0] * len(_SCORE_BINS) for c in top_courses}
+    course_score_matrix: Dict[str, List[int]] = {c: [0] * len(_SCORE_BINS) for c in top_courses}
     if top_courses:
         recs = db.execute(
             select(ExamServiceRecord.course_name, ExamServiceRecord.score).where(

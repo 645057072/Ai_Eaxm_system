@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """Flask：数智 BI 可视化大屏入口。"""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
