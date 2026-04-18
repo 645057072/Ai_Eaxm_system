@@ -142,6 +142,9 @@ class ExamAttempt(Base):
     )
     practice_report: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="练习卷交卷报告")
     total_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
+    client_ip: Mapped[Optional[str]] = mapped_column(
+        String(45), nullable=True, comment="客户端 IP（进入考试时记录，用于数智大屏地域分布）"
+    )
 
     session: Mapped["ExamSession"] = relationship(back_populates="attempts")
     user: Mapped["User"] = relationship(back_populates="attempts")

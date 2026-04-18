@@ -6,7 +6,7 @@ import string
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.orm import Session, aliased, joinedload
 
@@ -45,6 +45,16 @@ def _session_out_load_options():
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _client_ip_from_request(request: Request) -> str | None:
+    """解析客户端 IP（优先 X-Forwarded-For 首段，适配反向代理）。"""
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip() or None
+    if request.client is not None:
+        return request.client.host
+    return None
 
 
 def _dt_as_utc(dt: datetime) -> datetime:
@@ -620,6 +630,7 @@ def get_take_data(
 
 @router.post("/{session_id}/start", response_model=AttemptStartOut)
 def start_attempt(
+    request: Request,
     session_id: int,
     db: Annotated[Session, Depends(get_db)],
     current: Annotated[User, Depends(require_permission("action.exam.take"))],
@@ -721,6 +732,7 @@ def start_attempt(
         status="in_progress",
         started_at=t0,
         exam_timer_started_at=t0,
+        client_ip=_client_ip_from_request(request),
     )
     db.add(att)
     db.commit()

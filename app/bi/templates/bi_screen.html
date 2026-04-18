@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>数智 BI 中心</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: #0a1628; color: #e0f4ff; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+    .screen { height: 100vh; display: flex; flex-direction: column; }
+    .top {
+      height: 5vh;
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(90deg, #0d2137 0%, #143d6b 50%, #0d2137 100%);
+      border-bottom: 2px solid #1e6fd9;
+      box-shadow: 0 0 24px rgba(30, 111, 217, 0.35);
+    }
+    .top h1 {
+      font-size: clamp(16px, 2.2vh, 28px);
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-shadow: 0 0 12px rgba(100, 180, 255, 0.6);
+    }
+    .mid {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: row;
+      padding: 8px;
+      gap: 8px;
+    }
+    .mid-left, .mid-right {
+      width: 20%;
+      min-width: 0;
+      background: rgba(13, 33, 55, 0.85);
+      border: 1px solid #1a4a7a;
+      border-radius: 6px;
+    }
+    .mid-center {
+      width: 60%;
+      min-width: 0;
+      background: rgba(13, 33, 55, 0.85);
+      border: 1px solid #1a4a7a;
+      border-radius: 6px;
+    }
+    .panel-title {
+      padding: 6px 10px;
+      font-size: 13px;
+      color: #7eb8ff;
+      border-bottom: 1px solid #1a4a7a;
+    }
+    .chart-box { height: calc(100% - 32px); min-height: 120px; }
+    .bottom {
+      height: 20vh;
+      min-height: 140px;
+      display: flex;
+      flex-direction: row;
+      padding: 0 8px 8px;
+      gap: 8px;
+    }
+    .bottom-left, .bottom-right {
+      width: 50%;
+      min-width: 0;
+      background: rgba(13, 33, 55, 0.85);
+      border: 1px solid #1a4a7a;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="screen">
+    <header class="top">
+      <h1 id="bannerTitle">数智 BI 中心</h1>
+    </header>
+    <div class="mid">
+      <aside class="mid-left">
+        <div class="panel-title">在线课程总数（含下级企业）</div>
+        <div id="chartGauge" class="chart-box"></div>
+      </aside>
+      <section class="mid-center">
+        <div class="panel-title">在线考试人数地域分布（按客户端 IP）</div>
+        <div id="chartMap" class="chart-box"></div>
+      </section>
+      <aside class="mid-right">
+        <div class="panel-title">在线考试人数</div>
+        <div id="chartOnline" class="chart-box"></div>
+      </aside>
+    </div>
+    <div class="bottom">
+      <div class="bottom-left">
+        <div class="panel-title">课程考试分数分布</div>
+        <div id="chartCourseScore" class="chart-box"></div>
+      </div>
+      <div class="bottom-right">
+        <div class="panel-title">学员考试分数分布</div>
+        <div id="chartStudentScore" class="chart-box"></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const chartGauge = echarts.init(document.getElementById('chartGauge'), 'dark');
+    const chartMap = echarts.init(document.getElementById('chartMap'), 'dark');
+    const chartOnline = echarts.init(document.getElementById('chartOnline'), 'dark');
+    const chartCourseScore = echarts.init(document.getElementById('chartCourseScore'), 'dark');
+    const chartStudentScore = echarts.init(document.getElementById('chartStudentScore'), 'dark');
+
+    function baseTextStyle() {
+      return { color: '#b8d4f0' };
+    }
+
+    function applyGauge(courseTotal, gaugeMax) {
+      chartGauge.setOption({
+        backgroundColor: 'transparent',
+        series: [{
+          type: 'gauge',
+          min: 0,
+          max: gaugeMax,
+          splitNumber: 8,
+          axisLine: {
+            lineStyle: {
+              width: 14,
+              color: [[0.3, '#67e0e3'], [0.7, '#37a2da'], [1, '#fd666d']]
+            }
+          },
+          pointer: { itemStyle: { color: 'auto' } },
+          axisTick: { distance: -14, length: 6, lineStyle: { color: '#fff', width: 1 } },
+          splitLine: { distance: -14, length: 12, lineStyle: { color: '#fff', width: 2 } },
+          axisLabel: { color: '#8fb8e8', distance: 18, fontSize: 10 },
+          detail: {
+            valueAnimation: true,
+            formatter: '{value}',
+            color: '#fff',
+            fontSize: 28,
+            offsetCenter: [0, '70%']
+          },
+          title: { show: true, offsetCenter: [0, '92%'], fontSize: 12, color: '#7eb8ff' },
+          data: [{ value: courseTotal, name: '课程门数' }]
+        }]
+      });
+    }
+
+    function applyMap(mapData, intranetHits) {
+      chartMap.setOption({
+        backgroundColor: 'transparent',
+        tooltip: {
+          trigger: 'item',
+          formatter: function (p) {
+            if (p.data && p.data.name) return p.data.name + '：' + p.data.value + ' 人次';
+            return p.name + '：' + (p.value || 0);
+          }
+        },
+        visualMap: {
+          min: 0,
+          max: (function () {
+            var vals = (mapData || []).map(function (d) { return d.value; });
+            return vals.length ? Math.max.apply(null, vals.concat([10])) : 10;
+          })(),
+          text: ['高', '低'],
+          realtime: true,
+          calculable: true,
+          inRange: { color: ['#0c2c54', '#1565c0', '#4fc3f7', '#fff176'] },
+          textStyle: baseTextStyle()
+        },
+        series: [{
+          name: '参考人次',
+          type: 'map',
+          map: 'china',
+          roam: false,
+          emphasis: { label: { show: true, color: '#fff' }, itemStyle: { areaColor: '#ff7043' } },
+          data: mapData
+        }],
+        graphic: intranetHits > 0 ? [{
+          type: 'text',
+          right: 12,
+          bottom: 8,
+          style: { text: '内网 IP合计 ' + intranetHits + ' 人次（未计入地图）', fill: '#7eb8ff', fontSize: 11 }
+        }] : []
+      });
+    }
+
+    function applyOnline(dailyLabels, dailyOnline, totalDistinct) {
+      chartOnline.setOption({
+        backgroundColor: 'transparent',
+        title: {
+          text: '累计参考人数（学员去重）：' + totalDistinct,
+          left: 'center',
+          top: 4,
+          textStyle: { color: '#7eb8ff', fontSize: 12 }
+        },
+        grid: { left: 48, right: 16, top: 40, bottom: 28 },
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        xAxis: {
+          type: 'category',
+          data: dailyLabels,
+          axisLabel: { color: '#8fb8e8', fontSize: 10 }
+        },
+        yAxis: {
+          type: 'value',
+          name: '人数',
+          nameTextStyle: { color: '#7eb8ff', fontSize: 10 },
+          axisLabel: { color: '#8fb8e8' },
+          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+        },
+        series: [{
+          name: '当日参考人数',
+          type: 'bar',
+          barWidth: '55%',
+          itemStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: '#4fc3f7' },
+              { offset: 1, color: '#1565c0' }
+            ])
+          },
+          data: dailyOnline
+        }]
+      });
+    }
+
+    function applyCourseScore(scoreBins, courses, seriesList) {
+      chartCourseScore.setOption({
+        backgroundColor: 'transparent',
+        legend: { textStyle: baseTextStyle(), top: 0, type: 'scroll' },
+        grid: { left: 48, right: 12, top: 36, bottom: 28 },
+        tooltip: { trigger: 'axis' },
+        xAxis: {
+          type: 'category',
+          data: scoreBins,
+          axisLabel: { color: '#8fb8e8', fontSize: 10 }
+        },
+        yAxis: {
+          type: 'value',
+          name: '人次',
+          nameTextStyle: { color: '#7eb8ff', fontSize: 10 },
+          axisLabel: { color: '#8fb8e8' },
+          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+        },
+        series: seriesList.map(function (s, idx) {
+          const colors = ['#42a5f5', '#66bb6a', '#ffa726', '#ab47bc'];
+          return {
+            name: s.name,
+            type: 'bar',
+            stack: 'total',
+            emphasis: { focus: 'series' },
+            itemStyle: { color: colors[idx % colors.length] },
+            data: s.data
+          };
+        })
+      });
+    }
+
+    function applyStudentScore(scoreBins, data) {
+      chartStudentScore.setOption({
+        backgroundColor: 'transparent',
+        grid: { left: 48, right: 16, top: 16, bottom: 28 },
+        tooltip: { trigger: 'axis' },
+        xAxis: {
+          type: 'category',
+          data: scoreBins,
+          axisLabel: { color: '#8fb8e8', fontSize: 10 }
+        },
+        yAxis: {
+          type: 'value',
+          name: '人次',
+          nameTextStyle: { color: '#7eb8ff', fontSize: 10 },
+          axisLabel: { color: '#8fb8e8' },
+          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+        },
+        series: [{
+          name: '学员人次',
+          type: 'line',
+          smooth: true,
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(79, 195, 247, 0.55)' },
+              { offset: 1, color: 'rgba(21, 101, 192, 0.05)' }
+            ])
+          },
+          lineStyle: { width: 2, color: '#4fc3f7' },
+          data: data
+        }]
+      });
+    }
+
+    async function refresh() {
+      const p = new URLSearchParams(window.location.search);
+      const url = '/bi/api/data' + (p.toString() ? ('?' + p.toString()) : '');
+      const res = await fetch(url);
+      const j = await res.json();
+      if (!res.ok) {
+        document.getElementById('bannerTitle').textContent = j.error || '加载失败';
+        return;
+      }
+      document.getElementById('bannerTitle').textContent = j.title;
+      applyGauge(j.courseTotal, j.gaugeMax);
+      applyMap(j.mapData || [], j.intranetHits || 0);
+      applyOnline(j.dailyLabels, j.dailyOnline, j.totalDistinctExaminees);
+      const cs = j.courseScoreSeries || [];
+      if (cs.length === 0) {
+        chartCourseScore.setOption({
+          backgroundColor: 'transparent',
+          title: { text: '暂无课程交卷数据', left: 'center', top: 'middle', textStyle: { color: '#5c7a99', fontSize: 14 } }
+        });
+      } else {
+        applyCourseScore(j.scoreBins, j.courseScoreCourses, cs);
+      }
+      applyStudentScore(j.scoreBins, j.studentScoreData || []);
+    }
+
+    function resizeAll() {
+      chartGauge.resize();
+      chartMap.resize();
+      chartOnline.resize();
+      chartCourseScore.resize();
+      chartStudentScore.resize();
+    }
+
+    fetch('https://cdn.jsdelivr.net/npm/echarts@5/map/json/china.json')
+      .then(function (r) { return r.json(); })
+      .then(function (geo) {
+        echarts.registerMap('china', geo);
+        return refresh();
+      })
+      .then(function () {
+        setInterval(refresh, 60000);
+      })
+      .catch(function () {
+        document.getElementById('bannerTitle').textContent = '地图资源加载失败';
+      });
+
+    window.addEventListener('resize', resizeAll);
+  </script>
+</body>
+</html>
