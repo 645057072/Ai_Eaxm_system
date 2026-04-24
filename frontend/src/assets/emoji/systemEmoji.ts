@@ -50,6 +50,8 @@ export const SYSTEM_EMOJI = {
   questionManage: "\u{1F9E0}",
   paperLevel: "\u{1F3C6}",
   paperManage: "\u{1F4C3}",
+  /** 证书管理 */
+  certificate: "\u{1F396}",
 } as const;
 
 export type SystemEmojiKey = keyof typeof SYSTEM_EMOJI;

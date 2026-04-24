@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     attempts,
     auth,
+    certificates,
     courses,
     enterprises,
     exam_candidates,
@@ -39,4 +40,5 @@ api_router.include_router(attempts.router, tags=["考试作答"])
 api_router.include_router(students.router, prefix="/students", tags=["学员管理"])
 api_router.include_router(exam_candidates.router, prefix="/exam-candidates", tags=["考生管理"])
 api_router.include_router(exam_service_records.router, prefix="/exam-service-records", tags=["考试服务"])
+api_router.include_router(certificates.router, prefix="/certificates", tags=["证书管理"])
 api_router.include_router(wrong_practice.router, tags=["错题练习"])

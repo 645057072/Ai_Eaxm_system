@@ -92,6 +92,12 @@ const router = createRouter({
           meta: { permission: "list.exam_service_record", title: "考试服务" },
         },
         {
+          path: "exam/certificates",
+          name: "exam-certificates",
+          component: () => import("@/views/exam/CertificateManage.vue"),
+          meta: { permission: "menu.exam.certificate", title: "证书管理" },
+        },
+        {
           path: "exam/wrong-practice",
           name: "wrong-practice-list",
           component: () => import("@/views/exam/WrongPracticeList.vue"),

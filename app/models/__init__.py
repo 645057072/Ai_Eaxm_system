@@ -7,6 +7,7 @@ from app.models.exam import ExamAttempt, ExamAnswer, ExamPaper, ExamPaperItem, E
 from app.models.exam_candidate import ExamCandidate
 from app.models.exam_service_record import ExamServiceRecord
 from app.models.exam_wrong_question import ExamWrongQuestion
+from app.models.certificate import CertRecord, CertTemplate
 from app.models.paper_level import PaperLevel
 from app.models.print_template import PrintTemplate
 from app.models.permission import RolePermission
@@ -32,4 +33,6 @@ __all__ = [
     "ExamCandidate",
     "ExamServiceRecord",
     "ExamWrongQuestion",
+    "CertTemplate",
+    "CertRecord",
 ]

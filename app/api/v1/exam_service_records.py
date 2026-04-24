@@ -35,9 +35,12 @@ def list_exam_service_records(
     current: Annotated[User, Depends(require_permission("list.exam_service_record"))],
     page: Annotated[PageParams, Depends()],
     keyword: str | None = Query(default=None, description="考试编号/课程/试卷/企业/学员模糊"),
+    passed: bool | None = Query(default=None, description="是否通过；空为不限"),
 ) -> PageResult[ExamServiceRecordOut]:
     """分页列表。"""
     conds: list = []
+    if passed is not None:
+        conds.append(ExamServiceRecord.passed == passed)
     kw = (keyword or "").strip()
     if kw:
         like = f"%{kw}%"
