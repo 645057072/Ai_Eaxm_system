@@ -54,7 +54,8 @@ class User(Base):
         index=True,
         comment="关联学员ID",
     )
-    enable_date: Mapped[date] = mapped_column(Date, server_default=func.current_date(), comment="启用日期")
+    # 不在 DDL 中使用 CURRENT_DATE/CURDATE 默认值：MySQL 5.7 等对 DATE 列不支持表达式默认值，create_all 会失败
+    enable_date: Mapped[date] = mapped_column(Date, default=date.today, comment="启用日期")
     expire_date: Mapped[Optional[date]] = mapped_column(Date, comment="失效日期")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
