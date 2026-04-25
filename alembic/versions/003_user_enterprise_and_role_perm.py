@@ -32,6 +32,15 @@ def _has_column(table: str, col: str) -> bool:
         return False
 
 
+def _get_columns(table: str) -> list[dict]:
+    bind = op.get_bind()
+    insp = inspect(bind)
+    try:
+        return list(insp.get_columns(table) or [])
+    except Exception:
+        return []
+
+
 def _has_index(table: str, index_name: str) -> bool:
     bind = op.get_bind()
     insp = inspect(bind)
@@ -58,15 +67,36 @@ def upgrade() -> None:
     if _has_table("sys_enterprise"):
         r = bind.execute(sa.text("SELECT COUNT(*) FROM sys_enterprise")).scalar()
         if r == 0:
-            bind.execute(
-                sa.text(
-                    """
-                    INSERT INTO sys_enterprise
-                    (name, tax_id, license_file_path, address_phone, contact_person, industry)
-                    VALUES ('默认企业', 'DEFAULT000000000000000', NULL, NULL, NULL, NULL)
-                    """
+            # 兼容：不同环境下 sys_enterprise 字段可能不一致（如 enterprise_code 为 NOT NULL 且无默认值）
+            cols = _get_columns("sys_enterprise")
+            col_names = {c.get("name") for c in cols if c.get("name")}
+            default_tax_id = "DEFAULT000000000000000"
+
+            insert_cols: list[str] = []
+            insert_vals: dict[str, object] = {}
+
+            def _set(col: str, val: object) -> None:
+                if col in col_names:
+                    insert_cols.append(col)
+                    insert_vals[col] = val
+
+            _set("name", "默认企业")
+            _set("tax_id", default_tax_id)
+            _set("license_file_path", None)
+            _set("address_phone", None)
+            _set("contact_person", None)
+            _set("industry", None)
+            # 常见变体字段：企业编码（可能为 NOT NULL 且无默认值）
+            if "enterprise_code" in col_names and "enterprise_code" not in insert_vals:
+                _set("enterprise_code", "DEFAULT")
+
+            if insert_cols:
+                col_sql = ", ".join(insert_cols)
+                val_sql = ", ".join([f":{c}" for c in insert_cols])
+                bind.execute(
+                    sa.text(f"INSERT INTO sys_enterprise ({col_sql}) VALUES ({val_sql})"),
+                    insert_vals,
                 )
-            )
         eid = bind.execute(sa.text("SELECT id FROM sys_enterprise ORDER BY id ASC LIMIT 1")).scalar()
     else:
         # 理论上不会发生（002 会建表），但为幂等防御
