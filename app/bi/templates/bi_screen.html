@@ -332,8 +332,20 @@
     async function refresh() {
       const p = new URLSearchParams(window.location.search);
       const url = '/bi/api/data' + (p.toString() ? ('?' + p.toString()) : '');
-      const res = await fetch(url);
-      const j = await res.json();
+      let res;
+      try {
+        res = await fetch(url);
+      } catch (e) {
+        document.getElementById('bannerTitle').textContent = '数据接口不可用';
+        return;
+      }
+      let j = null;
+      try {
+        j = await res.json();
+      } catch (e) {
+        document.getElementById('bannerTitle').textContent = '数据接口返回异常';
+        return;
+      }
       if (!res.ok) {
         document.getElementById('bannerTitle').textContent = j.error || '加载失败';
         return;
@@ -363,7 +375,10 @@
     }
 
     fetch('/bi/static/geo/china.json')
-      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (!r.ok) throw new Error('geo fetch failed');
+        return r.json();
+      })
       .then(function (geo) {
         echarts.registerMap('china', geo);
         return refresh();
@@ -372,7 +387,7 @@
         setInterval(refresh, 60000);
       })
       .catch(function () {
-        document.getElementById('bannerTitle').textContent = '地图资源加载失败';
+        document.getElementById('bannerTitle').textContent = '地图资源加载失败或数据接口异常';
       });
 
     window.addEventListener('resize', resizeAll);

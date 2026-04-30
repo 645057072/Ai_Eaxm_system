@@ -34,8 +34,12 @@ def create_app() -> Flask:
                 eid = get_default_enterprise_id(db)
             if eid is None:
                 return jsonify({"error": "无企业数据，请先创建企业"}), 400
-            payload = build_dashboard_payload(db, eid)
-            return jsonify(payload)
+            try:
+                payload = build_dashboard_payload(db, eid)
+                return jsonify(payload)
+            except Exception as e:
+                # 统一返回 JSON，避免前端 res.json() 解析 HTML 500 失败后误判为地图加载失败
+                return jsonify({"error": f"数据接口异常：{e!s}"}), 500
         finally:
             db.close()
 

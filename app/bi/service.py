@@ -90,9 +90,14 @@ def resolve_ip_province(ip: str, cache: Dict[str, str], client: httpx.Client) ->
         cache[ip] = ""
         return ""
     url = f"https://whois.pconline.com.cn/ipJson.jsp?ip={ip}&json=true"
-    r = client.get(url, timeout=5.0)
-    r.encoding = r.apparent_encoding or "gbk"
-    data = r.json()
+    try:
+        r = client.get(url, timeout=5.0)
+        r.encoding = r.apparent_encoding or "gbk"
+        data = r.json()
+    except Exception:
+        # 外部 IP 库不可达/返回非 JSON 时，不影响大屏整体渲染
+        cache[ip] = ""
+        return ""
     pro = ""
     if isinstance(data, dict):
         pro = str(data.get("pro") or "")
