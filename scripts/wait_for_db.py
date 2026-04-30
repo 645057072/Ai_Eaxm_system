@@ -64,29 +64,8 @@ def main() -> int:
         """
         if not db_name:
             return True
-        try:
-            # 先尝试直接连目标库，存在则直接返回
-            conn = pymysql.connect(
-                host=host,
-                port=port,
-                user=user,
-                password=password,
-                database=db_name,
-                connect_timeout=3,
-                charset="utf8mb4",
-            )
-            conn.close()
-            return True
-        except pymysql.err.OperationalError as e:
-            # 1049: Unknown database
-            if len(getattr(e, "args", []) or []) >= 1 and int(e.args[0]) == 1049:
-                pass
-            else:
-                return False
-        except Exception:
-            return False
 
-        # 库不存在：尝试用同账号连接到 server 并创建
+        # 先连到 server（不指定 database），用 information_schema 判断库是否存在
         try:
             conn = pymysql.connect(
                 host=host,
@@ -99,13 +78,40 @@ def main() -> int:
             try:
                 with conn.cursor() as cur:
                     cur.execute(
-                        f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+                        "SELECT 1 FROM information_schema.schemata WHERE schema_name=%s LIMIT 1",
+                        (db_name,),
                     )
+                    exists = cur.fetchone() is not None
+                    if not exists:
+                        cur.execute(
+                            f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+                        )
                 conn.commit()
             finally:
                 conn.close()
-            print(f"已创建数据库 `{db_name}`")
-            return True
+            if not exists:
+                print(f"已创建数据库 `{db_name}`")
+
+            # 再验证一次：能否连上目标库（避免创建失败/权限不足被静默）
+            try:
+                c2 = pymysql.connect(
+                    host=host,
+                    port=port,
+                    user=user,
+                    password=password,
+                    database=db_name,
+                    connect_timeout=3,
+                    charset="utf8mb4",
+                )
+                c2.close()
+                return True
+            except Exception as e:
+                print(
+                    f"数据库 `{db_name}` 已存在/已创建，但仍无法连接（{e!s}）。"
+                    f"请确认 DATABASE_URL 的账号密码与权限正确。",
+                    file=sys.stderr,
+                )
+                return False
         except Exception as e:
             print(
                 f"数据库 `{db_name}` 不存在，且当前账号无法创建（{e!s}）。"
