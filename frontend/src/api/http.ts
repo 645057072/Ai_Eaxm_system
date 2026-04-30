@@ -1,6 +1,25 @@
 import axios, { type AxiosError } from "axios";
 
-const baseURL = import.meta.env.VITE_API_BASE || "/api";
+function resolveBaseURL(): string {
+  const raw = (import.meta.env.VITE_API_BASE || "").trim();
+  if (!raw) return "/api";
+  // 兼容：某些环境打包时误把 API_BASE 写成 localhost，部署到服务器后浏览器会直连 127.0.0.1 导致 ERR_CONNECTION_REFUSED
+  try {
+    if (raw.startsWith("http://") || raw.startsWith("https://")) {
+      const u = new URL(raw);
+      const hn = (u.hostname || "").toLowerCase();
+      const pageHost = (window.location.hostname || "").toLowerCase();
+      const isLocal = hn === "localhost" || hn === "127.0.0.1";
+      const pageIsLocal = pageHost === "localhost" || pageHost === "127.0.0.1";
+      if (isLocal && !pageIsLocal) return "/api";
+    }
+  } catch {
+    // ignore
+  }
+  return raw;
+}
+
+const baseURL = resolveBaseURL();
 
 type FastApiErrDetailItem = { loc?: unknown[]; msg?: string; type?: string };
 
