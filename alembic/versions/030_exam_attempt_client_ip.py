@@ -6,6 +6,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
+from app.db.migrate_compat import has_column
+
 revision: str = "030"
 down_revision: Union[str, None] = "029"
 branch_labels: Union[str, Sequence[str], None] = None
@@ -13,16 +15,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "exam_attempt",
-        sa.Column(
-            "client_ip",
-            sa.String(45),
-            nullable=True,
-            comment="客户端 IP（进入考试时记录，用于数智大屏地域分布）",
-        ),
-    )
+    if not has_column("exam_attempt", "client_ip"):
+        op.add_column(
+            "exam_attempt",
+            sa.Column(
+                "client_ip",
+                sa.String(45),
+                nullable=True,
+                comment="客户端 IP（进入考试时记录，用于数智大屏地域分布）",
+            ),
+        )
 
 
 def downgrade() -> None:
-    op.drop_column("exam_attempt", "client_ip")
+    if has_column("exam_attempt", "client_ip"):
+        op.drop_column("exam_attempt", "client_ip")

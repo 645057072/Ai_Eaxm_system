@@ -7,6 +7,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy import inspect, text
 
+from app.db.migrate_compat import has_fk, has_index, safe_create_fk, safe_create_index
+
 revision: str = "016"
 down_revision: Union[str, None] = "015"
 branch_labels: Union[str, Sequence[str], None] = None
@@ -75,23 +77,23 @@ def upgrade() -> None:
         )
     )
 
-    op.create_foreign_key(
+    safe_create_fk(
         "fk_exam_session_enterprise_id",
         "exam_session",
         "sys_enterprise",
         ["enterprise_id"],
         ["id"],
     )
-    op.create_foreign_key(
+    safe_create_fk(
         "fk_exam_session_course_id",
         "exam_session",
         "sys_course",
         ["course_id"],
         ["id"],
     )
-    op.create_index("ix_exam_session_enterprise_id", "exam_session", ["enterprise_id"], unique=False)
-    op.create_index("ix_exam_session_course_id", "exam_session", ["course_id"], unique=False)
-    op.create_index("uq_exam_session_session_code", "exam_session", ["session_code"], unique=True)
+    safe_create_index("ix_exam_session_enterprise_id", "exam_session", ["enterprise_id"], unique=False)
+    safe_create_index("ix_exam_session_course_id", "exam_session", ["course_id"], unique=False)
+    safe_create_index("uq_exam_session_session_code", "exam_session", ["session_code"], unique=True)
 
     op.alter_column(
         "exam_session",
@@ -110,11 +112,16 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("uq_exam_session_session_code", table_name="exam_session")
-    op.drop_index("ix_exam_session_course_id", table_name="exam_session")
-    op.drop_index("ix_exam_session_enterprise_id", table_name="exam_session")
-    op.drop_constraint("fk_exam_session_course_id", "exam_session", type_="foreignkey")
-    op.drop_constraint("fk_exam_session_enterprise_id", "exam_session", type_="foreignkey")
+    if has_index("exam_session", "uq_exam_session_session_code"):
+        op.drop_index("uq_exam_session_session_code", table_name="exam_session")
+    if has_index("exam_session", "ix_exam_session_course_id"):
+        op.drop_index("ix_exam_session_course_id", table_name="exam_session")
+    if has_index("exam_session", "ix_exam_session_enterprise_id"):
+        op.drop_index("ix_exam_session_enterprise_id", table_name="exam_session")
+    if has_fk("exam_session", "fk_exam_session_course_id"):
+        op.drop_constraint("fk_exam_session_course_id", "exam_session", type_="foreignkey")
+    if has_fk("exam_session", "fk_exam_session_enterprise_id"):
+        op.drop_constraint("fk_exam_session_enterprise_id", "exam_session", type_="foreignkey")
     op.drop_column("exam_session", "course_id")
     op.drop_column("exam_session", "enterprise_id")
     op.drop_column("exam_session", "session_code")

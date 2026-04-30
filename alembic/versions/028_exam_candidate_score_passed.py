@@ -6,6 +6,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
+from app.db.migrate_compat import has_column
+
 revision: str = "028"
 down_revision: Union[str, None] = "027"
 branch_labels: Union[str, Sequence[str], None] = None
@@ -13,17 +15,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "exam_candidate",
-        sa.Column("score", sa.Numeric(10, 2), nullable=True, comment="最近一次交卷得分"),
-    )
-    op.add_column(
-        "exam_candidate",
-        sa.Column("passed", sa.Boolean(), nullable=True, comment="最近一次交卷是否及格"),
-    )
+    if not has_column("exam_candidate", "score"):
+        op.add_column(
+            "exam_candidate",
+            sa.Column("score", sa.Numeric(10, 2), nullable=True, comment="最近一次交卷得分"),
+        )
+    if not has_column("exam_candidate", "passed"):
+        op.add_column(
+            "exam_candidate",
+            sa.Column("passed", sa.Boolean(), nullable=True, comment="最近一次交卷是否及格"),
+        )
 
 
 def downgrade() -> None:
-    op.drop_column("exam_candidate", "passed")
-    op.drop_column("exam_candidate", "score")
+    if has_column("exam_candidate", "passed"):
+        op.drop_column("exam_candidate", "passed")
+    if has_column("exam_candidate", "score"):
+        op.drop_column("exam_candidate", "score")
 

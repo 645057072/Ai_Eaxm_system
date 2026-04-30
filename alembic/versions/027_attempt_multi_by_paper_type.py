@@ -5,6 +5,8 @@ from typing import Sequence, Union
 
 from alembic import op
 
+from app.db.migrate_compat import has_unique
+
 revision: str = "027"
 down_revision: Union[str, None] = "026"
 branch_labels: Union[str, Sequence[str], None] = None
@@ -12,9 +14,17 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.drop_constraint("uq_session_user_attempt", "exam_attempt", type_="unique")
+    if has_unique("exam_attempt", "uq_session_user_attempt"):
+        try:
+            op.drop_constraint("uq_session_user_attempt", "exam_attempt", type_="unique")
+        except Exception:
+            pass
 
 
 def downgrade() -> None:
-    op.create_unique_constraint("uq_session_user_attempt", "exam_attempt", ["session_id", "user_id"])
+    if not has_unique("exam_attempt", "uq_session_user_attempt"):
+        try:
+            op.create_unique_constraint("uq_session_user_attempt", "exam_attempt", ["session_id", "user_id"])
+        except Exception:
+            pass
 
