@@ -6,6 +6,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
+from app.db.migrate_compat import has_column
+
 revision: str = "029"
 down_revision: Union[str, None] = "028"
 branch_labels: Union[str, Sequence[str], None] = None
@@ -13,15 +15,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "exam_attempt",
-        sa.Column(
-            "exam_timer_started_at",
-            sa.DateTime(timezone=True),
-            nullable=True,
-            comment="本次作答考试时长起算时刻（进入考试/续考时写入）",
-        ),
-    )
+    if not has_column("exam_attempt", "exam_timer_started_at"):
+        op.add_column(
+            "exam_attempt",
+            sa.Column(
+                "exam_timer_started_at",
+                sa.DateTime(timezone=True),
+                nullable=True,
+                comment="本次作答考试时长起算时刻（进入考试/续考时写入）",
+            ),
+        )
     op.execute(
         sa.text(
             "UPDATE exam_attempt SET exam_timer_started_at = started_at "
@@ -31,4 +34,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("exam_attempt", "exam_timer_started_at")
+    if has_column("exam_attempt", "exam_timer_started_at"):
+        op.drop_column("exam_attempt", "exam_timer_started_at")

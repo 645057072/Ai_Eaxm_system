@@ -7,6 +7,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy import inspect, text
 
+from app.db.migrate_compat import has_fk, has_index, safe_create_fk, safe_create_index
+
 revision: str = "015"
 down_revision: Union[str, None] = "014"
 branch_labels: Union[str, Sequence[str], None] = None
@@ -48,9 +50,9 @@ def upgrade() -> None:
         existing_comment="企业编码",
     )
 
-    op.create_index("ix_sys_enterprise_enterprise_code", "sys_enterprise", ["enterprise_code"], unique=True)
-    op.create_index("ix_sys_enterprise_parent_id", "sys_enterprise", ["parent_id"], unique=False)
-    op.create_foreign_key(
+    safe_create_index("ix_sys_enterprise_enterprise_code", "sys_enterprise", ["enterprise_code"], unique=True)
+    safe_create_index("ix_sys_enterprise_parent_id", "sys_enterprise", ["parent_id"], unique=False)
+    safe_create_fk(
         "fk_sys_enterprise_parent",
         "sys_enterprise",
         "sys_enterprise",
@@ -60,8 +62,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_sys_enterprise_parent", "sys_enterprise", type_="foreignkey")
-    op.drop_index("ix_sys_enterprise_parent_id", table_name="sys_enterprise")
-    op.drop_index("ix_sys_enterprise_enterprise_code", table_name="sys_enterprise")
+    if has_fk("sys_enterprise", "fk_sys_enterprise_parent"):
+        op.drop_constraint("fk_sys_enterprise_parent", "sys_enterprise", type_="foreignkey")
+    if has_index("sys_enterprise", "ix_sys_enterprise_parent_id"):
+        op.drop_index("ix_sys_enterprise_parent_id", table_name="sys_enterprise")
+    if has_index("sys_enterprise", "ix_sys_enterprise_enterprise_code"):
+        op.drop_index("ix_sys_enterprise_enterprise_code", table_name="sys_enterprise")
     op.drop_column("sys_enterprise", "parent_id")
     op.drop_column("sys_enterprise", "enterprise_code")
